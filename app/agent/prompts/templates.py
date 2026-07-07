@@ -26,12 +26,12 @@ Collected information so far:
 Missing fields: {missing_fields}
 
 Rules:
-- Ask for ONE missing piece of information at a time
+- Ask for exactly ONE missing piece of information — no more
+- Ask for the first missing field only
 - Be conversational, not robotic
-- Explain WHY you need each piece of information
+- Explain WHY you need this piece of information
 - If the lead resists, note their objection and move on
 - Extract any information the lead volunteers even if not asked
-- Update the fields whenever you detect new information
 
 Current lead message: {input}"""
 

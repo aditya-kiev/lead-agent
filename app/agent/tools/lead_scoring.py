@@ -69,7 +69,7 @@ def compute_lead_score(data: LeadScoreIn) -> LeadScoreOut:
 
     if score >= 0.7:
         status = LeadStatus.HOT
-    elif score >= 0.4:
+    elif score >= 0.3:
         status = LeadStatus.WARM
     else:
         status = LeadStatus.COLD

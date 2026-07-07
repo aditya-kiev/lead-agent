@@ -84,6 +84,23 @@ class LeadScoreOut(BaseModel):
     reasoning: str
 
 
+class DebugStateOut(BaseModel):
+    session_id: str
+    lead_name: str | None = None
+    company_name: str | None = None
+    industry: str | None = None
+    budget: float | None = None
+    timeline: str | None = None
+    problem_statement: str | None = None
+    lead_status: str | None = None
+    qualification_score: float | None = None
+    missing_fields: list[str] = []
+    conversation_stage: str = "unknown"
+    next_action: str | None = None
+    current_question: str | None = None
+    conversation_history_len: int = 0
+
+
 class MeetingBookIn(BaseModel):
     session_id: str
     proposed_time: datetime

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import operator
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from langgraph.graph import add_messages
 
@@ -26,6 +26,7 @@ class AgentState(TypedDict):
 
     current_node: str
     next_action: str | None
+    conversation_stage: str
     booking_confirmed: bool
     meeting_time: str | None
     human_escalated: bool
@@ -34,6 +35,7 @@ class AgentState(TypedDict):
     missing_fields: list[str]
     confidence: float
     iteration_count: int
+    current_question: str | None
 
 
 def get_initial_state(session_id: str, channel: str = "web") -> AgentState:
@@ -53,6 +55,7 @@ def get_initial_state(session_id: str, channel: str = "web") -> AgentState:
         "conversation_history": [],
         "current_node": "greeting",
         "next_action": None,
+        "conversation_stage": "greeting",
         "booking_confirmed": False,
         "meeting_time": None,
         "human_escalated": False,
@@ -60,4 +63,5 @@ def get_initial_state(session_id: str, channel: str = "web") -> AgentState:
         "missing_fields": [],
         "confidence": 1.0,
         "iteration_count": 0,
+        "current_question": None,
     }

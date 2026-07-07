@@ -1,15 +1,22 @@
+import logging
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agent.prompts.templates import MEETING_BOOKING_SYSTEM_PROMPT
 from app.agent.state import AgentState
 from app.agent.tools.calendar import get_available_slots
+from app.agent.nodes.helpers import safe_text
 from app.config.settings import settings
+
+logger = logging.getLogger("graph.node.meeting_booking")
 
 
 def create_meeting_booking_node(model: ChatGoogleGenerativeAI):
     async def meeting_booking_node(state: AgentState) -> dict:
-        user_message = state["messages"][-1].content if state["messages"] else ""
+        raw_last = state["messages"][-1].content if state["messages"] else ""
+        user_message = safe_text(raw_last)
+        logger.info("NODE meeting_booking ENTERED: user_message=%s", user_message[:50])
 
         slots = get_available_slots(settings.calendar_availability_days)
         slot_labels = "\n".join(s["label"] for s in slots[:9])
@@ -25,23 +32,27 @@ def create_meeting_booking_node(model: ChatGoogleGenerativeAI):
             )),
             HumanMessage(content=user_message),
         ])
+        response_text = safe_text(response.content)
+        logger.info("NODE meeting_booking EXIT: response=%s", response_text[:80])
 
         confirmed = False
         meeting_time = None
-        if any(phrase in user_message.lower() for phrase in ["yes", "confirm", "book", "schedule", "sure"]):
+        user_text = str(user_message).lower()
+        if any(phrase in user_text for phrase in ["yes", "confirm", "book", "schedule", "sure"]):
             for slot in slots:
-                if slot["label"].lower() in user_message.lower() or slot["datetime"][:10] in user_message:
+                if slot["label"].lower() in user_text or slot["datetime"][:10] in user_text:
                     confirmed = True
                     meeting_time = slot["datetime"]
                     break
 
-        if not confirmed and any(word in user_message.lower() for word in ["yes", "confirm", "book", "schedule", "sure", "sounds good", "that works"]):
+        if not confirmed and any(word in user_text for word in ["yes", "confirm", "book", "schedule", "sure", "sounds good", "that works"]):
             confirmed = True
             meeting_time = slots[0]["datetime"] if slots else None
 
+        logger.info("NODE meeting_booking: confirmed=%s meeting_time=%s", confirmed, meeting_time)
         return {
             "messages": [AIMessage(content=response.content)],
-            "conversation_history": [{"role": "assistant", "content": response.content}],
+            "conversation_history": [{"role": "assistant", "content": response_text}],
             "booking_confirmed": confirmed,
             "meeting_time": meeting_time,
             "current_node": "meeting_booking",

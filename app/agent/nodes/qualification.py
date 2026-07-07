@@ -1,14 +1,59 @@
+import logging
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agent.prompts.templates import QUALIFICATION_SYSTEM_PROMPT
 from app.agent.state import AgentState
 from app.agent.tools.lead_scoring import compute_lead_score
+from app.agent.nodes.helpers import safe_text
 from app.models.schemas import IntentType, LeadScoreIn
+
+logger = logging.getLogger("graph.node.qualification")
+
+REQUIRED_FIELDS = [
+    "lead_name",
+    "company_name",
+    "industry",
+    "budget",
+    "timeline",
+    "problem_statement",
+]
+
+
+def _all_fields_populated(state: AgentState) -> bool:
+    for field in REQUIRED_FIELDS:
+        val = state.get(field)
+        if field == "budget":
+            if val is None:
+                return False
+        elif not val:
+            return False
+    return True
 
 
 def create_qualification_node(model: ChatGoogleGenerativeAI):
     async def qualification_node(state: AgentState) -> dict:
+        logger.info("NODE qualification ENTERED: session=%s", state.get("session_id"))
+
+        if state.get("lead_status") is not None:
+            logger.info("NODE qualification: already qualified as '%s', skipping", state.get("lead_status"))
+            return {
+                "current_node": "qualification",
+                "conversation_stage": "qualified",
+                "next_action": "end",
+            }
+
+        if not _all_fields_populated(state):
+            missing = [f for f in REQUIRED_FIELDS if not state.get(f)]
+            logger.info("NODE qualification: missing fields %s, returning to collection", missing)
+            return {
+                "missing_fields": missing,
+                "next_action": "collect_info",
+                "current_node": "qualification",
+                "conversation_stage": "collecting",
+            }
+
         score_data = LeadScoreIn(
             budget=state.get("budget"),
             timeline=state.get("timeline"),
@@ -18,12 +63,16 @@ def create_qualification_node(model: ChatGoogleGenerativeAI):
         )
 
         score_result = compute_lead_score(score_data)
+        logger.info(
+            "NODE qualification: session=%s score=%s status=%s",
+            state.get("session_id"), score_result.score, score_result.status.value,
+        )
 
         context = "\n".join(
             f"{m['role']}: {m['content']}" for m in state.get("conversation_history", [])
         ) if state.get("conversation_history") else ""
 
-        llm_response = await model.ainvoke([
+        response = await model.ainvoke([
             SystemMessage(content=QUALIFICATION_SYSTEM_PROMPT.format(
                 lead_name=state.get("lead_name", "Unknown"),
                 company_name=state.get("company_name", "Unknown"),
@@ -33,16 +82,23 @@ def create_qualification_node(model: ChatGoogleGenerativeAI):
                 problem_statement=state.get("problem_statement", "Unknown"),
                 lead_intent=state.get("lead_intent", "unknown"),
             )),
-            HumanMessage(content=f"Lead context:\n{context}\n\nEvaluate this lead."),
+            HumanMessage(content=f"Lead context:\n{context}\n\nGenerate a qualification summary for this lead."),
         ])
+        response_text = safe_text(response.content)
+        logger.info("NODE qualification: response=%s", response_text[:80])
 
+        logger.info(
+            "NODE qualification EXIT: session=%s score=%s status=%s",
+            state.get("session_id"), score_result.score, score_result.status.value,
+        )
         return {
             "qualification_score": score_result.score,
             "lead_status": score_result.status.value,
-            "messages": [AIMessage(content=llm_response.content)],
-            "conversation_history": [{"role": "assistant", "content": llm_response.content}],
+            "messages": [AIMessage(content=response.content)],
+            "conversation_history": [{"role": "assistant", "content": response_text}],
             "current_node": "qualification",
-            "next_action": "handle_next",
+            "next_action": "end",
+            "conversation_stage": "qualified",
         }
 
     return qualification_node

@@ -22,7 +22,7 @@ def test_warm_lead():
         timeline="this month",
         intent=IntentType.INFORMATION,
     ))
-    assert 0.4 <= result.score < 0.65
+    assert 0.3 <= result.score < 0.65
     assert result.status == LeadStatus.WARM
 
 
@@ -32,7 +32,7 @@ def test_cold_lead():
         timeline="6 months",
         intent=IntentType.UNKNOWN,
     ))
-    assert result.score < 0.4
+    assert result.score < 0.3
     assert result.status == LeadStatus.COLD
 
 
