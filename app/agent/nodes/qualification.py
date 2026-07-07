@@ -34,19 +34,17 @@ def _all_fields_populated(state: AgentState) -> bool:
 
 def create_qualification_node(model: ChatGoogleGenerativeAI):
     async def qualification_node(state: AgentState) -> dict:
-        logger.info("NODE qualification ENTERED: session=%s", state.get("session_id"))
+        logger.debug("qualification_node session=%s", state.get("session_id"))
 
         if state.get("lead_status") is not None:
-            logger.info("NODE qualification: already qualified as '%s', skipping", state.get("lead_status"))
             return {
                 "current_node": "qualification",
                 "conversation_stage": "qualified",
-                "next_action": "end",
+                "next_action": "handle_next",
             }
 
         if not _all_fields_populated(state):
             missing = [f for f in REQUIRED_FIELDS if not state.get(f)]
-            logger.info("NODE qualification: missing fields %s, returning to collection", missing)
             return {
                 "missing_fields": missing,
                 "next_action": "collect_info",
@@ -63,10 +61,7 @@ def create_qualification_node(model: ChatGoogleGenerativeAI):
         )
 
         score_result = compute_lead_score(score_data)
-        logger.info(
-            "NODE qualification: session=%s score=%s status=%s",
-            state.get("session_id"), score_result.score, score_result.status.value,
-        )
+        logger.debug("qualification_node score=%s status=%s", score_result.score, score_result.status.value)
 
         context = "\n".join(
             f"{m['role']}: {m['content']}" for m in state.get("conversation_history", [])
@@ -85,19 +80,14 @@ def create_qualification_node(model: ChatGoogleGenerativeAI):
             HumanMessage(content=f"Lead context:\n{context}\n\nGenerate a qualification summary for this lead."),
         ])
         response_text = safe_text(response.content)
-        logger.info("NODE qualification: response=%s", response_text[:80])
 
-        logger.info(
-            "NODE qualification EXIT: session=%s score=%s status=%s",
-            state.get("session_id"), score_result.score, score_result.status.value,
-        )
         return {
             "qualification_score": score_result.score,
             "lead_status": score_result.status.value,
             "messages": [AIMessage(content=response.content)],
             "conversation_history": [{"role": "assistant", "content": response_text}],
             "current_node": "qualification",
-            "next_action": "end",
+            "next_action": "handle_next",
             "conversation_stage": "qualified",
         }
 

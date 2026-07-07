@@ -1,17 +1,10 @@
-import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agent.graph import run_agent
 
 
 async def test_persistence_merges_saved_state_into_initial_state():
-    """Regression test: run_agent must merge persisted lead fields into initial state.
-
-    Simulates two sequential calls:
-      1) First call populates lead_name / company_name / etc.; save_state persists them.
-      2) Second call loads that persisted state via load_state and merges it into
-         get_initial_state(), so the graph sees the existing lead data instead of None.
-    """
+    """run_agent merges persisted lead fields from memory_service into turn_input."""
     persisted = {
         "lead_name": "Alice",
         "company_name": "Acme Corp",
@@ -29,24 +22,36 @@ async def test_persistence_merges_saved_state_into_initial_state():
         "human_escalated": False,
     }
 
+    mock_graph = MagicMock()
+    mock_graph.ainvoke = AsyncMock(return_value={})
+
     with patch("app.agent.graph.memory_service.load_state", new_callable=AsyncMock) as mock_load:
         mock_load.return_value = persisted
-        result = await run_agent("test-persist-session", "Hello again")
+        with patch("app.agent.graph.get_graph", return_value=mock_graph) as mock_get_graph:
+            await run_agent("test-persist-session", "Hello again")
 
-    assert result.get("lead_name") == "Alice"
-    assert result.get("company_name") == "Acme Corp"
-    assert result.get("industry") == "technology"
-    assert result.get("budget") == 50000.0
-    assert result.get("lead_status") == "hot"
-    assert result.get("booking_confirmed") is True
+    call_input = mock_graph.ainvoke.call_args[0][0]
+    assert call_input.get("lead_name") == "Alice"
+    assert call_input.get("company_name") == "Acme Corp"
+    assert call_input.get("industry") == "technology"
+    assert call_input.get("budget") == 50000.0
+    assert call_input.get("lead_status") == "hot"
+    assert call_input.get("booking_confirmed") is True
+    assert call_input.get("conversation_history") == persisted["conversation_history"]
 
 
 async def test_persistence_new_lead_starts_with_defaults():
-    """A fresh session with no persisted data should use get_initial_state defaults."""
+    """A fresh session with no persisted data uses get_initial_state defaults."""
+    mock_graph = MagicMock()
+    mock_graph.ainvoke = AsyncMock(return_value={})
+
     with patch("app.agent.graph.memory_service.load_state", new_callable=AsyncMock) as mock_load:
         mock_load.return_value = None
-        result = await run_agent("test-new-session", "Hi")
+        with patch("app.agent.graph.get_graph", return_value=mock_graph):
+            await run_agent("test-new-session", "Hi")
 
-    assert result.get("lead_name") is None
-    assert result.get("company_name") is None
-    assert result.get("lead_status") is None
+    call_input = mock_graph.ainvoke.call_args[0][0]
+    assert call_input.get("lead_name") is None
+    assert call_input.get("company_name") is None
+    assert call_input.get("lead_status") is None
+    assert call_input.get("booking_confirmed") is False
