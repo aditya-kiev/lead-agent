@@ -16,6 +16,7 @@ from app.agent.nodes.meeting_booking import create_meeting_booking_node
 from app.agent.nodes.human_handoff import create_human_handoff_node
 from app.agent.nodes.end_conversation import create_end_conversation_node
 from app.config.settings import settings
+from app.services.memory import memory_service
 
 logger = logging.getLogger(__name__)
 _node_logger = logging.getLogger("graph.node")
@@ -162,16 +163,16 @@ async def run_agent(session_id: str, message: str, channel: str = "web") -> dict
     logger.info("RUN_AGENT: session_id=%s message=%s channel=%s", session_id, message[:50], channel)
     config = {"configurable": {"thread_id": session_id}}
 
-    existing = await get_graph().aget_state(config)
-    if existing and existing.values:
-        logger.info("RUN_AGENT: resuming session, existing keys=%s", list(existing.values.keys()))
-        turn_input = {
-            "messages": [HumanMessage(content=message)],
-        }
-    else:
-        logger.info("RUN_AGENT: new session, building initial state")
-        turn_input = get_initial_state(session_id, channel)
-        turn_input["messages"] = [HumanMessage(content=message)]
+    turn_input = get_initial_state(session_id, channel)
+    turn_input["messages"] = [HumanMessage(content=message)]
+
+    persisted = await memory_service.load_state(session_id)
+    if persisted:
+        logger.info("RUN_AGENT: merged persisted state for session_id=%s, keys=%s",
+                     session_id, list(persisted.keys()))
+        for key, value in persisted.items():
+            if value is not None and key in turn_input:
+                turn_input[key] = value
 
     result = await get_graph().ainvoke(turn_input, config)
     logger.info("RUN_AGENT: ainvoke completed, result keys=%s lead_status=%s stage=%s",

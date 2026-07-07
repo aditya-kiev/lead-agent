@@ -38,16 +38,15 @@ def create_meeting_booking_node(model: ChatGoogleGenerativeAI):
         confirmed = False
         meeting_time = None
         user_text = str(user_message).lower()
-        if any(phrase in user_text for phrase in ["yes", "confirm", "book", "schedule", "sure"]):
+        if any(word in user_text for word in ["yes", "confirm", "book", "schedule", "sure", "sounds good", "that works"]):
             for slot in slots:
                 if slot["label"].lower() in user_text or slot["datetime"][:10] in user_text:
                     confirmed = True
                     meeting_time = slot["datetime"]
                     break
-
-        if not confirmed and any(word in user_text for word in ["yes", "confirm", "book", "schedule", "sure", "sounds good", "that works"]):
-            confirmed = True
-            meeting_time = slots[0]["datetime"] if slots else None
+            if not confirmed:
+                confirmed = True
+                meeting_time = slots[0]["datetime"] if slots else None
 
         logger.info("NODE meeting_booking: confirmed=%s meeting_time=%s", confirmed, meeting_time)
         return {
