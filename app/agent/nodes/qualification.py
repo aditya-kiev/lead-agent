@@ -1,5 +1,5 @@
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agent.prompts.templates import QUALIFICATION_SYSTEM_PROMPT
 from app.agent.state import AgentState
@@ -7,7 +7,7 @@ from app.agent.tools.lead_scoring import compute_lead_score
 from app.models.schemas import IntentType, LeadScoreIn
 
 
-def create_qualification_node(model: ChatOpenAI):
+def create_qualification_node(model: ChatGoogleGenerativeAI):
     async def qualification_node(state: AgentState) -> dict:
         score_data = LeadScoreIn(
             budget=state.get("budget"),

@@ -42,7 +42,7 @@ class MessageOut(BaseModel):
     reply: str
     lead_status: str | None = None
     booking_confirmed: bool = False
-    meeting_time: datetime | None = None
+    meeting_time: str | None = None
     human_escalated: bool = False
     next_action: str | None = None
 

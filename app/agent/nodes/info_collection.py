@@ -1,13 +1,13 @@
 import json
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agent.prompts.templates import INFO_COLLECTION_SYSTEM_PROMPT, EXTRACTION_PROMPT
 from app.agent.state import AgentState
 
 
-def create_info_collection_node(model: ChatOpenAI):
+def create_info_collection_node(model: ChatGoogleGenerativeAI):
     async def info_collection_node(state: AgentState) -> dict:
         user_message = state["messages"][-1].content if state["messages"] else ""
 

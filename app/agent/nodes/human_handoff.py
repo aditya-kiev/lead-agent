@@ -1,12 +1,12 @@
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agent.prompts.templates import HUMAN_HANDOFF_SYSTEM_PROMPT
 from app.agent.state import AgentState
 from app.config.settings import settings
 
 
-def create_human_handoff_node(model: ChatOpenAI):
+def create_human_handoff_node(model: ChatGoogleGenerativeAI):
     async def human_handoff_node(state: AgentState) -> dict:
         user_message = state["messages"][-1].content if state["messages"] else ""
 

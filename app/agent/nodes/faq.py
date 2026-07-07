@@ -1,11 +1,11 @@
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agent.prompts.templates import FAQ_SYSTEM_PROMPT
 from app.agent.state import AgentState
 
 
-def create_faq_node(model: ChatOpenAI):
+def create_faq_node(model: ChatGoogleGenerativeAI):
     async def faq_node(state: AgentState) -> dict:
         user_message = state["messages"][-1].content if state["messages"] else ""
 

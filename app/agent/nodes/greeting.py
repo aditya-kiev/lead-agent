@@ -1,11 +1,11 @@
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agent.prompts.templates import GREETING_SYSTEM_PROMPT, INTENT_DETECTION_PROMPT
 from app.agent.state import AgentState
 
 
-def create_greeting_node(model: ChatOpenAI):
+def create_greeting_node(model: ChatGoogleGenerativeAI):
     async def greeting_node(state: AgentState) -> dict:
         user_message = state["messages"][-1].content if state["messages"] else ""
 

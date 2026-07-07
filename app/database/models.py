@@ -23,7 +23,7 @@ class LeadConversation(Base):
     lead_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
     booking_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     meeting_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    conversation_history: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    conversation_history: Mapped[list | None] = mapped_column(JSON, nullable=True)
     human_escalated: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

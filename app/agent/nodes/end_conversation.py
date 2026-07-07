@@ -1,5 +1,5 @@
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agent.prompts.templates import END_CONVERSATION_PROMPT
 from app.agent.state import AgentState
@@ -7,7 +7,7 @@ from app.agent.state import AgentState
 from app.agent.tools.crm import update_crm
 
 
-def create_end_conversation_node(model: ChatOpenAI):
+def create_end_conversation_node(model: ChatGoogleGenerativeAI):
     async def end_conversation_node(state: AgentState) -> dict:
         user_message = state["messages"][-1].content if state["messages"] else ""
 
