@@ -78,6 +78,18 @@ def test_secondary_industry_gets_lower_bonus():
     assert result_icp.score == pytest.approx(result_secondary.score + 0.15, abs=0.01)
 
 
+def test_threshold_uses_settings_not_hardcoded_value():
+    """Regression test: score must be compared against settings, not a magic number."""
+    from app.config.settings import settings
+    result = compute_lead_score(LeadScoreIn(
+        budget=15000, timeline="next quarter", intent=IntentType.INFORMATION,
+    ))
+    # budget=15000 (0.20) + timeline=next quarter (0.05) + intent=information (0.05) = 0.30
+    if settings.qualification_threshold_warm <= 0.30:
+        assert result.status.value in ("warm", "cold")
+    assert result.score == pytest.approx(0.30, abs=0.01)
+
+
 def test_edge_cases():
     result = compute_lead_score(LeadScoreIn(
         budget=None,

@@ -1,3 +1,4 @@
+from app.config.settings import settings
 from app.models.schemas import LeadScoreIn, LeadScoreOut, LeadStatus
 
 
@@ -77,9 +78,9 @@ def compute_lead_score(data: LeadScoreIn) -> LeadScoreOut:
 
     score = min(score, 1.0)
 
-    if score >= 0.7:
+    if score >= settings.qualification_threshold_hot:
         status = LeadStatus.HOT
-    elif score >= 0.3:
+    elif score >= settings.qualification_threshold_warm:
         status = LeadStatus.WARM
     else:
         status = LeadStatus.COLD

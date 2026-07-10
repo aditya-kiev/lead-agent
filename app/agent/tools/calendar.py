@@ -46,7 +46,7 @@ def _get_event_type_uuid() -> str | None:
     return settings.calendly_event_type_uri.rstrip("/").rsplit("/", 1)[-1]
 
 
-def _calendly_get_available_slots(days_ahead: int) -> list[dict]:
+async def _calendly_get_available_slots(days_ahead: int) -> list[dict]:
     event_type_uuid = _get_event_type_uuid()
     if not event_type_uuid:
         logger.debug("no calendly event type configured, falling back to stub")
@@ -56,16 +56,16 @@ def _calendly_get_available_slots(days_ahead: int) -> list[dict]:
     end_time = (datetime.now(timezone.utc) + timedelta(days=days_ahead)).isoformat().replace("+00:00", "Z")
 
     try:
-        response = httpx.get(
-            f"{_CALENDLY_API_BASE}/event_type_available_times",
-            headers=_calendly_headers(),
-            params={
-                "event_type_uuid": event_type_uuid,
-                "start_time": start_time,
-                "end_time": end_time,
-            },
-            timeout=10,
-        )
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                f"{_CALENDLY_API_BASE}/event_type_available_times",
+                headers=_calendly_headers(),
+                params={
+                    "event_type_uuid": event_type_uuid,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                },
+            )
         response.raise_for_status()
         data = response.json()
 
@@ -86,7 +86,7 @@ def _calendly_get_available_slots(days_ahead: int) -> list[dict]:
 _INVITATION_STORE: dict[str, dict] = {}
 
 
-def create_single_use_scheduling_link(event_type_uri: str | None = None) -> dict:
+async def create_single_use_scheduling_link(event_type_uri: str | None = None) -> dict:
     """Create a Calendly single-use scheduling link.
 
     Returns a dict with ``booking_url``, ``owner`` and ``status``.
@@ -102,16 +102,16 @@ def create_single_use_scheduling_link(event_type_uri: str | None = None) -> dict
         return {"booking_url": stub_url, "owner": "stub", "status": "stub"}
 
     try:
-        response = httpx.post(
-            f"{_CALENDLY_API_BASE}/scheduling_links",
-            headers=_calendly_headers(),
-            json={
-                "max_event_count": 1,
-                "owner": uri,
-                "owner_type": "EventType",
-            },
-            timeout=10,
-        )
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                f"{_CALENDLY_API_BASE}/scheduling_links",
+                headers=_calendly_headers(),
+                json={
+                    "max_event_count": 1,
+                    "owner": uri,
+                    "owner_type": "EventType",
+                },
+            )
         response.raise_for_status()
         data = response.json()
         resource = data.get("resource", {})
@@ -129,7 +129,7 @@ def create_single_use_scheduling_link(event_type_uri: str | None = None) -> dict
         return {"booking_url": stub_url, "owner": "stub", "status": "stub-fallback"}
 
 
-def check_booking_status(session_id: str) -> dict:
+async def check_booking_status(session_id: str) -> dict:
     """Check the status of a scheduled event for a given session.
 
     Uses Calendly's GET /scheduled_events filtered by invitee email/session.
@@ -144,12 +144,12 @@ def check_booking_status(session_id: str) -> dict:
         }
 
     try:
-        response = httpx.get(
-            f"{_CALENDLY_API_BASE}/scheduled_events",
-            headers=_calendly_headers(),
-            params={"user": settings.calendly_user_uri, "status": "active"},
-            timeout=10,
-        )
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                f"{_CALENDLY_API_BASE}/scheduled_events",
+                headers=_calendly_headers(),
+                params={"user": settings.calendly_user_uri, "status": "active"},
+            )
         response.raise_for_status()
         data = response.json()
         events = [
@@ -171,7 +171,7 @@ def check_booking_status(session_id: str) -> dict:
 
 # ── Public API (auto-select backend) ─────────────────────────────────────────
 
-def get_available_slots(days_ahead: int = 14) -> list[dict]:
+async def get_available_slots(days_ahead: int = 14) -> list[dict]:
     if settings.calendly_api_key:
-        return _calendly_get_available_slots(days_ahead)
+        return await _calendly_get_available_slots(days_ahead)
     return _stub_get_available_slots(days_ahead)

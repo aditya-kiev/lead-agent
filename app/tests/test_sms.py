@@ -1,13 +1,15 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.agent.tools.sms import send_sms, get_stub_sms_log
 from app.config.settings import settings
 
 
-def test_sms_stub_fallback_without_credentials():
+async def test_sms_stub_fallback_without_credentials():
     """Without Twilio credentials, send_sms logs to an in-memory stub."""
     with patch.object(settings, "twilio_account_sid", ""):
-        result = send_sms("+15551234567", "Hello from the stub!")
+        result = await send_sms("+15551234567", "Hello from the stub!")
 
     assert result["sid"].startswith("stub-")
     assert result["status"] == "sent"
@@ -18,8 +20,8 @@ def test_sms_stub_fallback_without_credentials():
     assert any(e["sid"] == result["sid"] for e in log)
 
 
-def test_sms_calls_twilio_when_configured():
-    """With Twilio credentials, send_sms calls the Twilio API."""
+async def test_sms_calls_twilio_when_configured():
+    """With Twilio credentials, send_sms calls the Twilio API via thread."""
     mock_message = MagicMock()
     mock_message.sid = "SM123"
     mock_message.status = "queued"
@@ -32,7 +34,7 @@ def test_sms_calls_twilio_when_configured():
          patch.object(settings, "twilio_from_number", "+15551234567"), \
          patch("twilio.rest.Client", return_value=mock_client):
 
-        result = send_sms("+15559876543", "Your meeting is confirmed!")
+        result = await send_sms("+15559876543", "Your meeting is confirmed!")
 
     assert result["sid"] == "SM123"
     assert result["status"] == "queued"

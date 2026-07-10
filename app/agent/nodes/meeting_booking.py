@@ -18,7 +18,7 @@ def create_meeting_booking_node(model: ChatGoogleGenerativeAI):
         user_message = safe_text(raw_last)
         logger.info("NODE meeting_booking ENTERED: user_message=%s", user_message[:50])
 
-        slots = get_available_slots(settings.calendar_availability_days)
+        slots = await get_available_slots(settings.calendar_availability_days)
         slot_labels = "\n".join(s["label"] for s in slots[:9])
 
         response = await model.ainvoke([
