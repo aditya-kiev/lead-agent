@@ -4,6 +4,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.agent.graph import run_agent
+from app.agent.gemini import GeminiRateLimitError
 from app.api.deps import verify_api_key
 from app.models.schemas import (
     MessageIn,
@@ -19,11 +20,15 @@ router = APIRouter(prefix="/webhook", tags=["webhook"])
 
 
 @router.post("/start", response_model=StartConversationOut)
-async def start_conversation(payload: StartConversationIn, _auth: None = Depends(verify_api_key)) -> StartConversationOut:
+async def start_conversation(
+    payload: StartConversationIn, _auth: None = Depends(verify_api_key)
+) -> StartConversationOut:
     session_id = payload.session_id or str(uuid.uuid4())
     logger.debug("start_conversation session=%s", session_id)
     try:
-        result = await run_agent(session_id, "Hi, I'm interested in your services.", payload.channel)
+        result = await run_agent(
+            session_id, "Hi, I'm interested in your services.", payload.channel
+        )
 
         try:
             await memory_service.save_state(session_id, result)
@@ -42,13 +47,21 @@ async def start_conversation(payload: StartConversationIn, _auth: None = Depends
             message=last_message or "Hello! How can I help you today?",
             lead_status=result.get("lead_status"),
         )
+    except GeminiRateLimitError as e:
+        logger.exception("start_conversation Gemini rate limited")
+        raise HTTPException(
+            status_code=429,
+            detail="The AI service is temporarily rate limited. Please try again in a minute.",
+        ) from e
     except Exception as e:
         logger.exception("start_conversation failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/message", response_model=MessageOut)
-async def handle_message(payload: MessageIn, _auth: None = Depends(verify_api_key)) -> MessageOut:
+async def handle_message(
+    payload: MessageIn, _auth: None = Depends(verify_api_key)
+) -> MessageOut:
     logger.debug("handle_message session=%s", payload.session_id)
     try:
         result = await run_agent(payload.session_id, payload.message, payload.channel)
@@ -74,6 +87,12 @@ async def handle_message(payload: MessageIn, _auth: None = Depends(verify_api_ke
             human_escalated=result.get("human_escalated", False),
             next_action=result.get("next_action"),
         )
+    except GeminiRateLimitError as e:
+        logger.exception("handle_message Gemini rate limited")
+        raise HTTPException(
+            status_code=429,
+            detail="The AI service is temporarily rate limited. Please try again in a minute.",
+        ) from e
     except Exception as e:
         logger.exception("handle_message failed")
         raise HTTPException(status_code=500, detail=str(e))

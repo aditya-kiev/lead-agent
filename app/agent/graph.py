@@ -8,6 +8,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agent.state import AgentState, get_initial_state
+from app.agent.gemini import RetryingGeminiModel
 from app.agent.nodes.greeting import create_greeting_node
 from app.agent.nodes.info_collection import create_info_collection_node
 from app.agent.nodes.qualification import create_qualification_node
@@ -120,6 +121,7 @@ def create_handle_next_node(model: ChatGoogleGenerativeAI):
         if result.has_objection:
             return {"objection_type": result.objection_type}
         return {"objection_type": None}
+
     return handle_next_node
 
 
@@ -131,6 +133,7 @@ def build_graph() -> CompiledStateGraph:
         temperature=settings.gemini_temperature,
         api_key=settings.gemini_api_key,
     )
+    model = RetryingGeminiModel(model)
 
     workflow = StateGraph(AgentState)
 
