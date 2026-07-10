@@ -1,6 +1,8 @@
 import pytest
 
-from app.agent.graph import route_after_greeting, route_after_info_collection, route_after_qualification, route_next_action
+from langgraph.graph import END
+
+from app.agent.graph import get_entry_point, route_after_greeting, route_after_info_collection, route_after_meeting, route_after_objection, route_after_qualification, route_next_action
 from app.agent.state import get_initial_state
 
 
@@ -27,7 +29,7 @@ def test_route_after_greeting():
 def test_route_after_info_collection():
     state = get_initial_state("test-1")
     state["missing_fields"] = ["lead_name", "budget"]
-    assert route_after_info_collection(state) == "info_collection"
+    assert route_after_info_collection(state) == END
 
     state["missing_fields"] = []
     assert route_after_info_collection(state) == "qualification"
@@ -107,3 +109,98 @@ def test_state_default_values():
     assert state["iteration_count"] == 0
     assert state["confidence"] == 1.0
     assert state["current_question"] is None
+
+
+def test_get_entry_point_resumes_from_current_node():
+    """Entry point must use current_node from persisted state, not hardcoded greeting."""
+    state = get_initial_state("test-1")
+    # First turn: current_node defaults to "greeting"
+    assert get_entry_point(state) == "greeting"
+
+    # Subsequent turn: resume from whatever the last active node was
+    state["current_node"] = "info_collection"
+    assert get_entry_point(state) == "info_collection"
+
+    state["current_node"] = "meeting_booking"
+    assert get_entry_point(state) == "meeting_booking"
+
+
+def test_get_entry_point_falls_back_to_greeting_for_unknown_node():
+    """Unknown current_node should fall back to greeting."""
+    state = get_initial_state("test-1")
+    state["current_node"] = "nonexistent"
+    assert get_entry_point(state) == "greeting"
+
+
+def test_info_collection_ends_when_missing_fields():
+    """Partial info must complete in one step and route to END, not loop."""
+    state = get_initial_state("test-1")
+    state["missing_fields"] = ["lead_name"]
+    # The graph run should end here, not loop back to info_collection
+    assert route_after_info_collection(state) == END
+
+
+def test_route_after_meeting_ends_when_not_confirmed():
+    """Unconfirmed booking must route to END, not self-loop."""
+    state = get_initial_state("test-1")
+    state["booking_confirmed"] = False
+    assert route_after_meeting(state) == END
+
+    state["booking_confirmed"] = True
+    assert route_after_meeting(state) == "end"
+
+
+def test_route_next_action_fallback_ends():
+    """Cold lead with no objection must route to END, not info_collection."""
+    state = get_initial_state("test-1")
+    state["confidence"] = 1.0
+    state["lead_status"] = "cold"
+    assert route_next_action(state) == END
+
+
+def test_route_after_objection_fallback_ends():
+    """Non-hot/warm lead with no escalation must route to END, not info_collection."""
+    state = get_initial_state("test-1")
+    state["lead_status"] = "cold"
+    assert route_after_objection(state) == END
+
+
+async def test_info_collection_does_not_loop_on_partial_data():
+    """Simulate a full graph run with partial info — must complete in one step."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    mock_response = MagicMock()
+    mock_response.content = '{"Name": "Alice"}'
+
+    mock_model = MagicMock()
+    mock_model.ainvoke = AsyncMock(return_value=mock_response)
+
+    with patch("app.agent.graph.ChatGoogleGenerativeAI", return_value=mock_model), \
+         patch("app.agent.graph.get_entry_point", return_value="info_collection"), \
+         patch("app.agent.graph.memory_service.load_state", new_callable=AsyncMock, return_value=None), \
+         patch("app.agent.graph.get_graph", return_value=MagicMock(ainvoke=AsyncMock(return_value={
+             "missing_fields": ["company_name", "budget", "timeline", "problem_statement", "industry"],
+             "conversation_history": [{"role": "assistant", "content": "What's your company name?"}],
+             "current_node": "info_collection",
+         }))):
+
+        from app.agent.graph import run_agent
+        result = await run_agent("test-partial", "My name is Alice")
+
+    # Must have exactly one assistant reply (follow-up question), not a loop
+    history = result.get("conversation_history", [])
+    assistant_msgs = [m for m in history if m.get("role") == "assistant"]
+    assert len(assistant_msgs) == 1, f"Expected 1 assistant reply, got {len(assistant_msgs)}: {history}"
+
+
+def test_gemini_timeout_is_configured():
+    """ChatGoogleGenerativeAI must be constructed with a timeout so hanging
+    Gemini calls raise an exception instead of blocking forever."""
+    from unittest.mock import MagicMock, patch
+    with patch("app.agent.graph.ChatGoogleGenerativeAI") as mock_cls:
+        mock_cls.return_value = MagicMock()
+        from app.agent.graph import build_graph
+        build_graph()
+    _, kwargs = mock_cls.call_args
+    assert "timeout" in kwargs, "ChatGoogleGenerativeAI must have a timeout kwarg"
+    assert kwargs["timeout"] > 0, "timeout must be a positive number (seconds)"

@@ -21,6 +21,12 @@ from app.agent.tools.objection_detection import detect_objection
 from app.config.settings import settings
 from app.services.memory import memory_service
 
+_ALL_NODES = frozenset({
+    "greeting", "info_collection", "qualification", "faq",
+    "objection_handling", "meeting_booking", "human_handoff",
+    "end", "handle_next",
+})
+
 logger = logging.getLogger(__name__)
 _node_logger = logging.getLogger("graph.node")
 
@@ -37,7 +43,7 @@ def route_after_info_collection(state: AgentState) -> str:
     missing = state.get("missing_fields", [])
     _node_logger.debug("route_after_info_collection: missing=%s", missing)
     if missing:
-        return "info_collection"
+        return END
     return "qualification"
 
 
@@ -82,7 +88,7 @@ def route_next_action(state: AgentState) -> str:
     if lead_status in ("hot", "warm"):
         return "meeting_booking"
 
-    return "info_collection"
+    return END
 
 
 def route_after_objection(state: AgentState) -> str:
@@ -99,7 +105,7 @@ def route_after_objection(state: AgentState) -> str:
     lead_status = state.get("lead_status", "")
     if lead_status in ("hot", "warm"):
         return "meeting_booking"
-    return "info_collection"
+    return END
 
 
 def route_after_meeting(state: AgentState) -> str:
@@ -108,7 +114,7 @@ def route_after_meeting(state: AgentState) -> str:
     )
     if state.get("booking_confirmed"):
         return "end"
-    return "meeting_booking"
+    return END
 
 
 def create_handle_next_node(model: ChatGoogleGenerativeAI):
@@ -125,6 +131,14 @@ def create_handle_next_node(model: ChatGoogleGenerativeAI):
     return handle_next_node
 
 
+def get_entry_point(state: AgentState) -> str:
+    """Resume from the last active node on subsequent turns."""
+    current_node = state.get("current_node")
+    if current_node in _ALL_NODES:
+        return current_node
+    return "greeting"
+
+
 def build_graph() -> CompiledStateGraph:
     logger.debug("building graph with model=%s", settings.gemini_model)
 
@@ -132,6 +146,7 @@ def build_graph() -> CompiledStateGraph:
         model=settings.gemini_model,
         temperature=settings.gemini_temperature,
         api_key=settings.gemini_api_key,
+        timeout=settings.gemini_timeout,
     )
     model = RetryingGeminiModel(model)
 
@@ -147,7 +162,7 @@ def build_graph() -> CompiledStateGraph:
     workflow.add_node("end", create_end_conversation_node(model))
     workflow.add_node("handle_next", create_handle_next_node(model))
 
-    workflow.set_entry_point("greeting")
+    workflow.set_conditional_entry_point(get_entry_point)
 
     workflow.add_conditional_edges(
         "greeting",
@@ -158,7 +173,7 @@ def build_graph() -> CompiledStateGraph:
     workflow.add_conditional_edges(
         "info_collection",
         route_after_info_collection,
-        {"info_collection": "info_collection", "qualification": "qualification"},
+        {END: END, "qualification": "qualification"},
     )
 
     workflow.add_conditional_edges(
@@ -171,7 +186,7 @@ def build_graph() -> CompiledStateGraph:
         "handle_next",
         route_next_action,
         {
-            "info_collection": "info_collection",
+            END: END,
             "objection_handling": "objection_handling",
             "meeting_booking": "meeting_booking",
             "human_handoff": "human_handoff",
@@ -183,14 +198,14 @@ def build_graph() -> CompiledStateGraph:
     workflow.add_conditional_edges(
         "faq",
         route_after_info_collection,
-        {"info_collection": "info_collection", "qualification": "qualification"},
+        {END: END, "qualification": "qualification"},
     )
 
     workflow.add_conditional_edges(
         "objection_handling",
         route_after_objection,
         {
-            "info_collection": "info_collection",
+            END: END,
             "meeting_booking": "meeting_booking",
             "human_handoff": "human_handoff",
             "end": "end",
@@ -200,7 +215,7 @@ def build_graph() -> CompiledStateGraph:
     workflow.add_conditional_edges(
         "meeting_booking",
         route_after_meeting,
-        {"end": "end", "meeting_booking": "meeting_booking"},
+        {"end": "end", END: END},
     )
 
     workflow.add_edge("human_handoff", "end")
