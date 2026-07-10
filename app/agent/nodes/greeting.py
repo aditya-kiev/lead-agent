@@ -27,7 +27,9 @@ def create_greeting_node(model: ChatGoogleGenerativeAI):
     async def greeting_node(state: AgentState) -> dict:
         # Returning user guard: if conversation_history exists, this is not a new session.
         # Skip the greeting entirely so we don't re-greet mid-conversation.
-        if state.get("conversation_history"):
+        # Returning user guard: if the conversation already has an assistant
+        # reply, this is mid-conversation — skip re-greeting.
+        if any(m.get("role") == "assistant" for m in state.get("conversation_history") or []):
             logger.debug("greeting_node: returning user, skipping")
             return {}
 
@@ -75,7 +77,6 @@ def create_greeting_node(model: ChatGoogleGenerativeAI):
         return {
             "messages": [AIMessage(content=response.content)],
             "conversation_history": [
-                {"role": "user", "content": user_message},
                 {"role": "assistant", "content": _safe_text(response.content)},
             ],
             "lead_intent": lead_intent,

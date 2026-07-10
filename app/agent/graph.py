@@ -243,6 +243,14 @@ async def run_agent(session_id: str, message: str, channel: str = "web") -> dict
             if value is not None and key in turn_input:
                 turn_input[key] = value
 
+    # Record the user message centrally so every turn's message appears in
+    # conversation_history — not just the first turn (greeting node).
+    # This must happen after the persisted-state merge so it appends to,
+    # rather than being overwritten by, any loaded history.
+    turn_input["conversation_history"] = (
+        turn_input.get("conversation_history") or []
+    ) + [{"role": "user", "content": message}]
+
     result = await get_graph().ainvoke(turn_input, config)
     logger.debug(
         "run_agent complete: lead_status=%s stage=%s",
