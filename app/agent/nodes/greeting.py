@@ -3,48 +3,44 @@ import logging
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.agent.prompts.templates import GREETING_SYSTEM_PROMPT, INTENT_DETECTION_PROMPT
+from app.agent.prompts.templates import COMBINED_GREETING_PROMPT
 from app.agent.state import AgentState
+from app.agent.nodes.helpers import safe_text
 
 logger = logging.getLogger("graph.node.greeting")
 
 
-def _safe_text(content):
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict):
-                parts.append(item.get("text", ""))
-            else:
-                parts.append(str(item))
-        return "\n".join(parts)
-    return str(content)
+def _parse_combined_response(text: str) -> tuple[str, str]:
+    """Extract intent and reply from the combined prompt response."""
+    intent = "unknown"
+    reply = text.strip()
+
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.upper().startswith("INTENT:"):
+            raw = stripped.split(":", 1)[1].strip().lower()
+            for candidate in ["purchase", "information", "support", "partnership"]:
+                if candidate in raw:
+                    intent = candidate
+                    break
+        elif stripped.upper().startswith("REPLY:"):
+            reply = stripped.split(":", 1)[1].strip()
+
+    return intent, reply
 
 
 def create_greeting_node(model: ChatGoogleGenerativeAI):
     async def greeting_node(state: AgentState) -> dict:
-        # Returning user guard: if conversation_history exists, this is not a new session.
-        # Skip the greeting entirely so we don't re-greet mid-conversation.
-        # Returning user guard: if the conversation already has an assistant
-        # reply, this is mid-conversation — skip re-greeting.
+        # Returning user guard: skip if mid-conversation
         if any(m.get("role") == "assistant" for m in state.get("conversation_history") or []):
             logger.debug("greeting_node: returning user, skipping")
             return {}
 
         user_msgs = [m for m in state.get("messages", []) if isinstance(m, HumanMessage)]
         raw_last = user_msgs[-1].content if user_msgs else ""
-        user_message = _safe_text(raw_last)
+        user_message = safe_text(raw_last)
         logger.info("NODE greeting ENTERED: session=%s user_msg=%s",
                     state.get("session_id"), user_message[:50])
-
-        logger.info("NODE greeting: LLM call 1/2 (intent detection)")
-        intent_response = await model.ainvoke([
-            SystemMessage(content=INTENT_DETECTION_PROMPT.format(input=user_message)),
-            HumanMessage(content="Detect the intent from the above message."),
-        ])
-        logger.info("NODE greeting: LLM call 1/2 response=%s", str(intent_response.content)[:100])
 
         known_info = {
             k: v for k, v in {
@@ -54,30 +50,27 @@ def create_greeting_node(model: ChatGoogleGenerativeAI):
             }.items() if v
         }
 
-        logger.info("NODE greeting: LLM call 2/2 (greeting generation)")
+        logger.info("NODE greeting: LLM call 1/1 (combined intent + generation)")
         response = await model.ainvoke([
-            SystemMessage(content=GREETING_SYSTEM_PROMPT.format(
+            SystemMessage(content=COMBINED_GREETING_PROMPT.format(
                 company_name="our company",
                 lead_status=state.get("lead_status", "new"),
                 known_info=str(known_info) if known_info else "none yet",
+                input=user_message,
             )),
             HumanMessage(content=user_message),
         ])
-        logger.info("NODE greeting: LLM call 2/2 response=%s", str(response.content)[:100])
+        text = safe_text(response.content)
+        logger.info("NODE greeting: response=%s", text[:100])
 
-        intent_text = _safe_text(intent_response.content).strip().lower()
-        lead_intent = "unknown"
-        for intent in ["purchase", "information", "support", "partnership"]:
-            if intent in intent_text:
-                lead_intent = intent
-                break
+        lead_intent, reply = _parse_combined_response(text)
 
         logger.info("NODE greeting EXIT: session=%s lead_intent=%s",
                     state.get("session_id"), lead_intent)
         return {
-            "messages": [AIMessage(content=response.content)],
+            "messages": [AIMessage(content=reply)],
             "conversation_history": [
-                {"role": "assistant", "content": _safe_text(response.content)},
+                {"role": "assistant", "content": reply},
             ],
             "lead_intent": lead_intent,
             "current_node": "greeting",

@@ -170,7 +170,11 @@ Create a friendly closing message that:
 
 Lead message: {input}"""
 
-EXTRACTION_PROMPT = """Extract structured information from the conversation.
+COMBINED_INFO_COLLECTION_PROMPT = """You are a lead qualification agent collecting information from a potential customer.
+
+Your tasks:
+1. Extract any new information the lead has volunteered from the conversation.
+2. Generate the next question to ask (about the first missing field only).
 
 Current state:
 - Name: {lead_name}
@@ -180,18 +184,43 @@ Current state:
 - Timeline: {timeline}
 - Problem: {problem_statement}
 
-Conversation:
+Missing fields (ask about the first one): {missing_fields}
+
+Conversation so far:
 {messages}
 
-Extract any new information found. Return JSON with only fields that were filled or updated."""
+Format your reply EXACTLY as:
+EXTRACTED: {{"Name": "value", "Company": "value", "Budget": 50000, ...}}
+REPLY: [your single follow-up question]
 
-INTENT_DETECTION_PROMPT = """Analyze the lead's message and determine their intent.
+Rules:
+- Only include fields that have new or updated values in the EXTRACTED JSON.
+- Ask about exactly ONE missing field.
+- Be conversational, not robotic.
+- Explain why you need this information.
 
-Lead message: {input}
+Lead message: {input}"""
 
-Options: purchase, information, support, partnership, unknown
+COMBINED_GREETING_PROMPT = """You are a friendly AI sales assistant for {company_name}. Greet the lead warmly and identify their intent.
 
-Respond with only the intent type and a brief confidence assessment."""
+Rules:
+- Be warm and professional
+- Keep your response under 3 sentences
+- Ask an open-ended question to understand their needs
+- Do not ask for personal information yet
+
+First, determine the lead's intent from their message. Options: purchase, information, support, partnership, unknown.
+Then, generate an appropriate response.
+
+Format your reply EXACTLY as:
+INTENT: [intent]
+REPLY: [your greeting]
+
+Current context:
+- Lead status: {lead_status}
+- Known info: {known_info}
+
+Lead message: {input}"""
 
 OBJECTION_DETECTION_PROMPT = """Analyze the lead's message for objections.
 

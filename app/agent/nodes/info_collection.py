@@ -5,7 +5,7 @@ import re
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.agent.prompts.templates import INFO_COLLECTION_SYSTEM_PROMPT, EXTRACTION_PROMPT
+from app.agent.prompts.templates import COMBINED_INFO_COLLECTION_PROMPT
 from app.agent.state import AgentState
 from app.agent.nodes.helpers import safe_text
 
@@ -54,6 +54,24 @@ def _compute_missing(merged: dict) -> list[str]:
     return missing
 
 
+def _parse_combined_response(text: str) -> tuple[dict, str]:
+    """Parse ``EXTRACTED: ...`` and ``REPLY: ...`` from the combined response."""
+    extracted: dict = {}
+    reply = safe_text(text)
+
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.upper().startswith("EXTRACTED:"):
+            json_str = stripped.split(":", 1)[1].strip()
+            parsed = _extract_json(json_str)
+            if parsed is not None:
+                extracted = parsed
+        elif stripped.upper().startswith("REPLY:"):
+            reply = stripped.split(":", 1)[1].strip()
+
+    return extracted, reply
+
+
 def create_info_collection_node(model: ChatGoogleGenerativeAI):
     async def info_collection_node(state: AgentState) -> dict:
         user_msgs = [m for m in state.get("messages", []) if isinstance(m, HumanMessage)]
@@ -76,49 +94,20 @@ def create_info_collection_node(model: ChatGoogleGenerativeAI):
             f"{m['role']}: {m['content']}" for m in state.get("conversation_history", [])
         )
 
-        logger.info("NODE info_collection: LLM call 1/1 (extraction)")
-        extraction_response = await model.ainvoke([
-            SystemMessage(content=EXTRACTION_PROMPT.format(
-                lead_name=lead_name or "",
-                company_name=company_name or "",
-                industry=industry or "",
-                budget=budget or "",
-                timeline=timeline or "",
-                problem_statement=problem_statement or "",
-                messages=conv_text,
-            )),
-            HumanMessage(content="Extract any new information from the conversation."),
-        ])
-        extraction_text = safe_text(extraction_response.content)
-        logger.info("NODE info_collection: extraction response=%s", extraction_text[:120])
-
-        updates = {}
-        extracted = _extract_json(extraction_text)
-        if extracted is not None:
-            for label, state_field in _FIELD_MAP.items():
-                val = extracted.get(label) or extracted.get(state_field)
-                if val:
-                    updates[state_field] = val
-            logger.info("NODE info_collection: updates=%s", updates)
-        else:
-            logger.info("NODE info_collection: no valid JSON extracted")
-
         merged = {
-            "lead_name": updates.get("lead_name", lead_name),
-            "company_name": updates.get("company_name", company_name),
-            "industry": updates.get("industry", industry),
-            "budget": updates.get("budget", budget),
-            "timeline": updates.get("timeline", timeline),
-            "problem_statement": updates.get("problem_statement", problem_statement),
+            "lead_name": lead_name,
+            "company_name": company_name,
+            "industry": industry,
+            "budget": budget,
+            "timeline": timeline,
+            "problem_statement": problem_statement,
         }
 
         missing_fields = _compute_missing(merged)
-        logger.info("NODE info_collection: missing_fields=%s", missing_fields)
 
         if not missing_fields:
             logger.info("NODE info_collection: all fields present, routing to qualification")
             return {
-                **updates,
                 "missing_fields": [],
                 "next_action": "qualify",
                 "current_node": "info_collection",
@@ -127,10 +116,13 @@ def create_info_collection_node(model: ChatGoogleGenerativeAI):
             }
 
         first_missing = missing_fields[0]
-        logger.info("NODE info_collection: asking one question about '%s'", first_missing)
+        logger.info(
+            "NODE info_collection: LLM call 1/1 (combined extraction + question about '%s')",
+            first_missing,
+        )
 
         response = await model.ainvoke([
-            SystemMessage(content=INFO_COLLECTION_SYSTEM_PROMPT.format(
+            SystemMessage(content=COMBINED_INFO_COLLECTION_PROMPT.format(
                 lead_name=merged["lead_name"] or "not provided",
                 company_name=merged["company_name"] or "not provided",
                 industry=merged["industry"] or "not provided",
@@ -138,22 +130,40 @@ def create_info_collection_node(model: ChatGoogleGenerativeAI):
                 timeline=merged["timeline"] or "not provided",
                 problem_statement=merged["problem_statement"] or "not provided",
                 missing_fields=[first_missing],
+                messages=conv_text,
                 input=user_message,
             )),
             HumanMessage(content=user_message),
         ])
-        response_text = safe_text(response.content)
-        logger.info("NODE info_collection: response=%s", response_text[:80])
+        text = safe_text(response.content)
+        logger.info("NODE info_collection: response=%s", text[:120])
+
+        updates, reply = _parse_combined_response(text)
+
+        updates_dict: dict = {}
+        if updates:
+            for label, state_field in _FIELD_MAP.items():
+                val = updates.get(label) or updates.get(state_field)
+                if val is not None:
+                    updates_dict[state_field] = val
+
+        new_merged = {**merged, **updates_dict}
+        new_missing = _compute_missing(new_merged)
+
+        logger.info(
+            "NODE info_collection EXIT: updates=%s missing=%s reply=%s",
+            updates_dict, new_missing, reply[:60],
+        )
 
         return {
-            **updates,
-            "messages": [AIMessage(content=response.content)],
-            "conversation_history": [{"role": "assistant", "content": response_text}],
-            "missing_fields": missing_fields,
+            **updates_dict,
+            "messages": [AIMessage(content=reply)],
+            "conversation_history": [{"role": "assistant", "content": reply}],
+            "missing_fields": new_missing,
             "current_node": "info_collection",
             "next_action": "collect_info",
             "conversation_stage": "collecting",
-            "current_question": first_missing,
+            "current_question": first_missing if new_missing else None,
         }
 
     return info_collection_node

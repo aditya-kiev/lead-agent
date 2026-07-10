@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     gemini_temperature: float = 0.1
     gemini_timeout: float = 30.0
+    gemini_rpm_limit: int = 10
 
     langchain_tracing_v2: bool = False
     langsmith_api_key: str = ""

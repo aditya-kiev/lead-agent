@@ -12,18 +12,22 @@ def mock_model():
     return model
 
 
-async def test_detect_pricing_objection(mock_model):
-    mock_model.ainvoke.return_value.content = "pricing"
+async def test_detect_pricing_objection_via_keyword(mock_model):
+    """Pricing keywords should be caught by the pre-filter, no LLM call."""
     result = await detect_objection("This is too expensive for us", mock_model)
     assert result.has_objection is True
     assert result.objection_type == "pricing"
+    assert result.source == "keyword"
+    mock_model.ainvoke.assert_not_called()
 
 
-async def test_detect_no_objection(mock_model):
-    mock_model.ainvoke.return_value.content = "none"
-    result = await detect_objection("This sounds great, tell me more!", mock_model)
+async def test_detect_no_objection_via_safe_phrase(mock_model):
+    """Safe messages should skip the LLM entirely."""
+    result = await detect_objection("Hello, I'm interested in your services", mock_model)
     assert result.has_objection is False
     assert result.objection_type is None
+    assert result.source == "safe"
+    mock_model.ainvoke.assert_not_called()
 
 
 async def test_detect_empty_message(mock_model):
@@ -40,19 +44,21 @@ async def test_detect_trims_whitespace(mock_model):
     mock_model.ainvoke.assert_not_called()
 
 
-async def test_detect_objection_calls_model_with_prompt(mock_model):
+async def test_ambiguous_message_escalates_to_llm(mock_model):
+    """Messages that aren't clearly safe or clearly objections go to the LLM."""
     mock_model.ainvoke.return_value.content = "timing"
-    await detect_objection("Not the right time", mock_model)
+    result = await detect_objection("I'm wondering about the implementation timeline", mock_model)
+    assert result.source == "llm"
     assert mock_model.ainvoke.call_count == 1
     messages = mock_model.ainvoke.call_args[0][0]
     sys_msg = [m for m in messages if m.type == "system"][0]
     assert "timing" in sys_msg.content
-    assert "pricing" in sys_msg.content
 
 
-async def test_detect_all_objection_types(mock_model):
-    for ot in [t for t in OBJECTION_TYPES if t != "none"]:
-        mock_model.ainvoke.return_value.content = ot
-        result = await detect_objection("Some message", mock_model)
-        assert result.has_objection is True
-        assert result.objection_type == ot
+async def test_llm_returns_no_objection(mock_model):
+    """LLM returning 'none' should be treated as no objection."""
+    mock_model.ainvoke.return_value.content = "none"
+    result = await detect_objection("I'm wondering about the implementation timeline", mock_model)
+    assert result.has_objection is False
+    assert result.objection_type is None
+    assert result.source == "llm"

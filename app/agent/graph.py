@@ -8,7 +8,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agent.state import AgentState, get_initial_state
-from app.agent.gemini import RetryingGeminiModel
+from app.agent.gemini import RetryingGeminiModel, gemini_call_counter
 from app.agent.nodes.greeting import create_greeting_node
 from app.agent.nodes.info_collection import create_info_collection_node
 from app.agent.nodes.qualification import create_qualification_node
@@ -270,9 +270,11 @@ async def run_agent(session_id: str, message: str, channel: str = "web") -> dict
     ) + [{"role": "user", "content": message}]
 
     result = await get_graph().ainvoke(turn_input, config)
+    gemini_calls = gemini_call_counter.get()
     logger.debug(
-        "run_agent complete: lead_status=%s stage=%s",
+        "run_agent complete: lead_status=%s stage=%s gemini_calls=%s",
         result.get("lead_status"),
         result.get("conversation_stage"),
+        gemini_calls,
     )
     return result
