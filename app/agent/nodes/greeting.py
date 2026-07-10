@@ -25,6 +25,12 @@ def _safe_text(content):
 
 def create_greeting_node(model: ChatGoogleGenerativeAI):
     async def greeting_node(state: AgentState) -> dict:
+        # Returning user guard: if conversation_history exists, this is not a new session.
+        # Skip the greeting entirely so we don't re-greet mid-conversation.
+        if state.get("conversation_history"):
+            logger.debug("greeting_node: returning user, skipping")
+            return {}
+
         user_msgs = [m for m in state.get("messages", []) if isinstance(m, HumanMessage)]
         raw_last = user_msgs[-1].content if user_msgs else ""
         user_message = _safe_text(raw_last)

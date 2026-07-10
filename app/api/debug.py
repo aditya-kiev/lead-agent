@@ -1,7 +1,8 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.deps import verify_api_key
 from app.agent.graph import get_graph
 from app.models.schemas import DebugStateOut
 
@@ -11,7 +12,7 @@ router = APIRouter(prefix="/debug", tags=["debug"])
 
 
 @router.get("/state/{session_id}", response_model=DebugStateOut)
-async def get_debug_state(session_id: str) -> DebugStateOut:
+async def get_debug_state(session_id: str, _auth: None = Depends(verify_api_key)) -> DebugStateOut:
     config = {"configurable": {"thread_id": session_id}}
     state = await get_graph().aget_state(config)
     if not state or not state.values:

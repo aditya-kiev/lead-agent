@@ -29,6 +29,8 @@ class ConversationMemory:
                     booking_confirmed=state.get("booking_confirmed", False),
                     meeting_time=state.get("meeting_time"),
                     conversation_history=state.get("conversation_history"),
+                    conversation_stage=state.get("conversation_stage"),
+                    current_node=state.get("current_node"),
                     human_escalated=state.get("human_escalated", False),
                 )
                 logger.debug("save_state OK session=%s", session_id)
@@ -56,6 +58,8 @@ class ConversationMemory:
                     "booking_confirmed": lead.booking_confirmed,
                     "meeting_time": lead.meeting_time.isoformat() if lead.meeting_time else None,
                     "conversation_history": lead.conversation_history or [],
+                    "conversation_stage": lead.conversation_stage,
+                    "current_node": lead.current_node,
                     "human_escalated": lead.human_escalated,
                 }
         except Exception as e:

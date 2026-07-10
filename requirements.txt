@@ -16,3 +16,4 @@ pytest-asyncio>=0.24.0
 python-dotenv>=1.0.0
 alembic>=1.13.0
 langsmith>=0.1.125
+twilio>=9.0.0

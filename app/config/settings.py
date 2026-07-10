@@ -23,6 +23,19 @@ class Settings(BaseSettings):
     qualification_threshold_warm: float = 0.4
     human_handoff_confidence: float = 0.3
 
+    api_key: str = ""
+    allowed_origins: list[str] = []
+
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
+    sms_enabled: bool = False
+
+    calendly_api_key: str = ""
+    calendly_event_type_uri: str = ""
+    calendly_user_uri: str = ""
+    calendly_enabled: bool = False
+
     calendar_availability_days: int = 14
     meeting_duration_minutes: int = 30
 

@@ -1,7 +1,8 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.deps import verify_api_key
 from app.database.crud import get_conversation
 from app.database.session import async_session_factory
 from app.models.schemas import ConversationHistoryOut
@@ -12,7 +13,7 @@ router = APIRouter(prefix="/conversation", tags=["conversation"])
 
 
 @router.get("/{session_id}", response_model=ConversationHistoryOut)
-async def get_conversation_history(session_id: str) -> ConversationHistoryOut:
+async def get_conversation_history(session_id: str, _auth: None = Depends(verify_api_key)) -> ConversationHistoryOut:
     async with async_session_factory() as db_session:
         lead = await get_conversation(db_session, session_id)
         if not lead:

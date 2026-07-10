@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -15,15 +16,12 @@ from app.agent.nodes.objection_handling import create_objection_handling_node
 from app.agent.nodes.meeting_booking import create_meeting_booking_node
 from app.agent.nodes.human_handoff import create_human_handoff_node
 from app.agent.nodes.end_conversation import create_end_conversation_node
+from app.agent.tools.objection_detection import detect_objection
 from app.config.settings import settings
 from app.services.memory import memory_service
 
 logger = logging.getLogger(__name__)
 _node_logger = logging.getLogger("graph.node")
-
-
-async def handle_next_node(state: AgentState) -> dict:
-    return {}
 
 
 def route_after_greeting(state: AgentState) -> str:
@@ -43,15 +41,23 @@ def route_after_info_collection(state: AgentState) -> str:
 
 
 def route_after_qualification(state: AgentState) -> str:
-    _node_logger.debug("route_after_qualification: lead_status=%s", state.get("lead_status"))
+    _node_logger.debug(
+        "route_after_qualification: lead_status=%s", state.get("lead_status")
+    )
     return "handle_next"
 
 
 def route_next_action(state: AgentState) -> str:
     confidence = state.get("confidence", 1.0)
-    _node_logger.debug("route_next_action: confidence=%s booking=%s escalated=%s next=%s status=%s",
-                       confidence, state.get("booking_confirmed"), state.get("human_escalated"),
-                       state.get("next_action"), state.get("lead_status"))
+    _node_logger.debug(
+        "route_next_action: confidence=%s booking=%s escalated=%s next=%s status=%s objection=%s",
+        confidence,
+        state.get("booking_confirmed"),
+        state.get("human_escalated"),
+        state.get("next_action"),
+        state.get("lead_status"),
+        state.get("objection_type"),
+    )
 
     if confidence < settings.human_handoff_confidence:
         return "human_handoff"
@@ -65,14 +71,7 @@ def route_next_action(state: AgentState) -> str:
     if next_action == "end" or booking:
         return "end"
 
-    objection_keywords = ["price", "cost", "expensive", "budget", "too much", "not sure",
-                          "alternatives", "competitor", "trust", "scam", "risky", "later",
-                          "need to think", "check with", "talk to my"]
-    user_msgs = [m for m in state.get("conversation_history", []) if m.get("role") == "user"]
-    last_user_msg = user_msgs[-1]["content"].lower() if user_msgs else ""
-    has_objection = any(kw in last_user_msg for kw in objection_keywords)
-
-    if has_objection:
+    if state.get("objection_type"):
         return "objection_handling"
 
     if next_action == "meeting_booking":
@@ -86,8 +85,12 @@ def route_next_action(state: AgentState) -> str:
 
 
 def route_after_objection(state: AgentState) -> str:
-    _node_logger.debug("route_after_objection: escalated=%s booking=%s status=%s",
-                       state.get("human_escalated"), state.get("booking_confirmed"), state.get("lead_status"))
+    _node_logger.debug(
+        "route_after_objection: escalated=%s booking=%s status=%s",
+        state.get("human_escalated"),
+        state.get("booking_confirmed"),
+        state.get("lead_status"),
+    )
     if state.get("human_escalated"):
         return "human_handoff"
     if state.get("booking_confirmed"):
@@ -99,10 +102,25 @@ def route_after_objection(state: AgentState) -> str:
 
 
 def route_after_meeting(state: AgentState) -> str:
-    _node_logger.debug("route_after_meeting: booking=%s", state.get("booking_confirmed"))
+    _node_logger.debug(
+        "route_after_meeting: booking=%s", state.get("booking_confirmed")
+    )
     if state.get("booking_confirmed"):
         return "end"
     return "meeting_booking"
+
+
+def create_handle_next_node(model: ChatGoogleGenerativeAI):
+    async def handle_next_node(state: AgentState) -> dict:
+        user_msgs = [
+            m for m in state.get("conversation_history", []) if m.get("role") == "user"
+        ]
+        last_user_msg = user_msgs[-1]["content"] if user_msgs else ""
+        result = await detect_objection(last_user_msg, model)
+        if result.has_objection:
+            return {"objection_type": result.objection_type}
+        return {"objection_type": None}
+    return handle_next_node
 
 
 def build_graph() -> CompiledStateGraph:
@@ -124,7 +142,7 @@ def build_graph() -> CompiledStateGraph:
     workflow.add_node("meeting_booking", create_meeting_booking_node(model))
     workflow.add_node("human_handoff", create_human_handoff_node(model))
     workflow.add_node("end", create_end_conversation_node(model))
-    workflow.add_node("handle_next", handle_next_node)
+    workflow.add_node("handle_next", create_handle_next_node(model))
 
     workflow.set_entry_point("greeting")
 
@@ -204,19 +222,31 @@ def get_graph() -> CompiledStateGraph:
 
 async def run_agent(session_id: str, message: str, channel: str = "web") -> dict:
     logger.debug("run_agent session=%s channel=%s", session_id, channel)
-    config = {"configurable": {"thread_id": session_id}}
+    config: Any = {"configurable": {"thread_id": session_id}}
 
+    # Source of truth for turn-to-turn state resumption: Postgres via memory_service.
+    # On every incoming message we load persisted state (lead fields, conversation_stage,
+    # current_node, etc.) and merge it into the initial state dict. This survives process
+    # restarts and multiple workers (e.g. Railway deployment). The LangGraph MemorySaver
+    # checkpointer is kept for within-ainvoke consistency but is NOT relied upon across
+    # HTTP requests.
     turn_input = get_initial_state(session_id, channel)
-    turn_input["messages"] = [HumanMessage(content=message)]
+    # store simple dicts for messages to satisfy the TypedDict expected by the graph
+    turn_input["messages"] = [{"role": "user", "content": message}]
 
     persisted = await memory_service.load_state(session_id)
     if persisted:
-        logger.debug("merged %d persisted keys for session %s", len(persisted), session_id)
+        logger.debug(
+            "merged %d persisted keys for session %s", len(persisted), session_id
+        )
         for key, value in persisted.items():
             if value is not None and key in turn_input:
                 turn_input[key] = value
 
     result = await get_graph().ainvoke(turn_input, config)
-    logger.debug("run_agent complete: lead_status=%s stage=%s",
-                 result.get("lead_status"), result.get("conversation_stage"))
+    logger.debug(
+        "run_agent complete: lead_status=%s stage=%s",
+        result.get("lead_status"),
+        result.get("conversation_stage"),
+    )
     return result

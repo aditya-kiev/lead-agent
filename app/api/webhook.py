@@ -1,9 +1,10 @@
 import uuid
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.agent.graph import run_agent
+from app.api.deps import verify_api_key
 from app.models.schemas import (
     MessageIn,
     MessageOut,
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/webhook", tags=["webhook"])
 
 
 @router.post("/start", response_model=StartConversationOut)
-async def start_conversation(payload: StartConversationIn) -> StartConversationOut:
+async def start_conversation(payload: StartConversationIn, _auth: None = Depends(verify_api_key)) -> StartConversationOut:
     session_id = payload.session_id or str(uuid.uuid4())
     logger.debug("start_conversation session=%s", session_id)
     try:
@@ -47,7 +48,7 @@ async def start_conversation(payload: StartConversationIn) -> StartConversationO
 
 
 @router.post("/message", response_model=MessageOut)
-async def handle_message(payload: MessageIn) -> MessageOut:
+async def handle_message(payload: MessageIn, _auth: None = Depends(verify_api_key)) -> MessageOut:
     logger.debug("handle_message session=%s", payload.session_id)
     try:
         result = await run_agent(payload.session_id, payload.message, payload.channel)

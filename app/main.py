@@ -39,15 +39,16 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.allowed_origins or [],
+    allow_credentials=bool(settings.allowed_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(webhook_router)
 app.include_router(conversation_router)
-app.include_router(debug_router)
+if settings.debug:
+    app.include_router(debug_router)
 
 
 @app.get("/health", response_model=HealthOut)

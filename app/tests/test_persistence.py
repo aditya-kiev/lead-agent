@@ -19,6 +19,8 @@ async def test_persistence_merges_saved_state_into_initial_state():
         "conversation_history": [
             {"role": "assistant", "content": "Great, let me ask you a few questions."},
         ],
+        "conversation_stage": "collecting",
+        "current_node": "info_collection",
         "human_escalated": False,
     }
 
@@ -38,6 +40,8 @@ async def test_persistence_merges_saved_state_into_initial_state():
     assert call_input.get("lead_status") == "hot"
     assert call_input.get("booking_confirmed") is True
     assert call_input.get("conversation_history") == persisted["conversation_history"]
+    assert call_input.get("conversation_stage") == "collecting"
+    assert call_input.get("current_node") == "info_collection"
 
 
 async def test_persistence_new_lead_starts_with_defaults():

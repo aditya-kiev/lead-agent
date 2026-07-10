@@ -41,8 +41,7 @@ def test_route_after_qualification():
 def test_route_next_action_hot_lead():
     state = get_initial_state("test-1")
     state["lead_status"] = "hot"
-    route = route_next_action(state)
-    assert route in ("meeting_booking", "info_collection")
+    assert route_next_action(state) == "meeting_booking"
 
 
 def test_route_next_action_booking():
@@ -61,6 +60,43 @@ def test_route_next_action_low_confidence():
     state = get_initial_state("test-1")
     state["confidence"] = 0.1
     assert route_next_action(state) == "human_handoff"
+
+
+def test_route_next_action_objection_handling():
+    state = get_initial_state("test-1")
+    state["objection_type"] = "pricing"
+    assert route_next_action(state) == "objection_handling"
+
+    state["objection_type"] = "timing"
+    assert route_next_action(state) == "objection_handling"
+
+
+def test_route_next_action_objection_takes_precedence_over_hot():
+    """Objection routing should take precedence over hot-lead routing."""
+    state = get_initial_state("test-1")
+    state["objection_type"] = "trust"
+    state["lead_status"] = "hot"
+    assert route_next_action(state) == "objection_handling"
+
+
+async def test_greeting_node_skips_for_returning_user():
+    """The greeting node must not re-enter for returning users mid-conversation."""
+    state = get_initial_state("test-1")
+    state["conversation_history"] = [{"role": "assistant", "content": "Hello!"}]
+    state["conversation_stage"] = "collecting"
+    state["current_node"] = "info_collection"
+
+    from unittest.mock import MagicMock, AsyncMock
+    from app.agent.nodes.greeting import create_greeting_node
+
+    mock_model = MagicMock()
+    mock_model.ainvoke = AsyncMock(
+        side_effect=Exception("should not be called for returning user")
+    )
+    node_fn = create_greeting_node(mock_model)
+    result = await node_fn(state)
+
+    assert result == {}, "Greeting node must return empty dict for returning users"
 
 
 def test_state_default_values():

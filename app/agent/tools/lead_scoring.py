@@ -1,7 +1,13 @@
 from app.models.schemas import LeadScoreIn, LeadScoreOut, LeadStatus
 
 
-_TARGET_INDUSTRIES = {
+# Primary ICP: real estate and insurance (0.20)
+_ICP_INDUSTRIES = {
+    "real estate", "realty", "brokerage", "real estate brokerage",
+    "insurance", "insurance agency", "independent insurance",
+}
+# Secondary tier — still valuable but lower weight (0.05)
+_SECONDARY_INDUSTRIES = {
     "technology", "saas", "software", "fintech", "healthtech",
     "healthcare", "manufacturing", "logistics", "ecommerce", "retail",
 }
@@ -35,12 +41,16 @@ def compute_lead_score(data: LeadScoreIn) -> LeadScoreOut:
     else:
         reasons.append("Timeline unknown")
 
-    if data.industry and data.industry.lower() in _TARGET_INDUSTRIES:
-        score += 0.20
-        reasons.append(f"Target industry: {data.industry}")
-    elif data.industry:
-        score += 0.05
-        reasons.append(f"Non-target industry: {data.industry}")
+    if data.industry:
+        ind = data.industry.lower()
+        if ind in _ICP_INDUSTRIES:
+            score += 0.20
+            reasons.append(f"ICP industry: {data.industry}")
+        elif ind in _SECONDARY_INDUSTRIES:
+            score += 0.05
+            reasons.append(f"Secondary industry: {data.industry}")
+        else:
+            reasons.append(f"Non-target industry: {data.industry}")
     else:
         reasons.append("Industry unknown")
 
