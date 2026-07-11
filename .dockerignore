@@ -1,6 +1,11 @@
-uvicorn.venv
+.venv
 .venv-1
 venv
+uvicorn.venv
+.idea
+*.log
+demo.html
+.env
 env
 __pycache__
 .git
