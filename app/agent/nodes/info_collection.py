@@ -7,7 +7,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agent.prompts.templates import COMBINED_INFO_COLLECTION_PROMPT
 from app.agent.state import AgentState
-from app.agent.nodes.helpers import safe_text
+from app.agent.nodes.helpers import parse_budget, safe_text
 
 logger = logging.getLogger("graph.node.info_collection")
 
@@ -145,6 +145,8 @@ def create_info_collection_node(model: ChatGoogleGenerativeAI):
             for label, state_field in _FIELD_MAP.items():
                 val = updates.get(label) or updates.get(state_field)
                 if val is not None:
+                    if state_field == "budget":
+                        val = parse_budget(val)
                     updates_dict[state_field] = val
 
         new_merged = {**merged, **updates_dict}

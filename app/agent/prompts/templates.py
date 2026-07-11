@@ -198,6 +198,9 @@ Rules:
 - Ask about exactly ONE missing field.
 - Be conversational, not robotic.
 - Explain why you need this information.
+- For the Budget field, convert Indian currency shorthand to a plain number in rupees.
+  e.g. "80 lakh" → 8000000, "1.2 crore" → 12000000, "50k" → 50000.
+  If the lead gives a range, use the midpoint.
 
 Lead message: {input}"""
 

@@ -171,3 +171,109 @@ async def test_double_call_does_not_duplicate_conversation_history():
         )
         assert hist2[0] == {"role": "user", "content": "Hello"}
         assert hist2[1] == {"role": "user", "content": "What's your pricing?"}
+
+
+async def test_parse_budget_handles_indian_shorthand():
+    """Indian currency shorthand must parse to the correct numeric value
+    so it does not crash the DOUBLE PRECISION ``budget`` column."""
+    from app.agent.nodes.helpers import parse_budget
+
+    cases = [
+        # (input, expected)
+        ("80 lakh", 8_000_000),
+        ("80L", 8_000_000),
+        ("80lakh", 8_000_000),
+        ("1.2 crore", 12_000_000),
+        ("1.2 Cr", 12_000_000),
+        ("1.2cr", 12_000_000),
+        ("50k", 50_000),
+        ("50000", 50_000.0),
+        (50000, 50_000.0),
+        (50000.0, 50_000.0),
+        ("₹50,000", 50_000.0),
+        ("₹ 80 lakh", 8_000_000),
+        (None, None),
+        ("", None),
+        ("not provided", None),
+        ("unknown", None),
+        ("abc", None),
+    ]
+    for raw, expected in cases:
+        result = parse_budget(raw)
+        assert result == expected, (
+            f"parse_budget({raw!r}) = {result!r}, expected {expected!r}"
+        )
+
+
+async def test_budget_parse_in_info_collection_round_trip():
+    """Verify that info_collection's budget pipeline (LLM →
+    _parse_combined_response → parse_budget) produces a numeric
+    value that survives a round-trip through save_state/load_state.
+
+    This uses the real ``memory_service.save_state`` / ``load_state``
+    (mocked to an in-memory store) to confirm the DB layer would not
+    throw a ``DataError`` on Indian shorthand.
+    """
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.agent.graph import run_agent
+
+    store: dict = {}
+
+    async def _fake_save(session_id, state):
+        store[session_id] = state
+
+    async def _fake_load(session_id):
+        return store.get(session_id)
+
+    # Mock the graph to simulate info_collection returning "80 lakh"
+    # as the extracted budget (as the LLM might produce before parsing).
+    mock_graph = MagicMock()
+    mock_graph.ainvoke = AsyncMock(return_value={
+        "lead_name": "Raj",
+        "company_name": "BuilderCorp",
+        "industry": "real estate",
+        "budget": 8_000_000.0,  # parse_budget("80 lakh") → 8000000
+        "timeline": "3 months",
+        "problem_statement": "Need construction financing",
+        "missing_fields": [],
+        "current_node": "qualification",
+        "conversation_stage": "collecting",
+        "lead_status": None,
+        "qualification_score": None,
+        "booking_confirmed": False,
+        "meeting_time": None,
+        "human_escalated": False,
+        "objection_type": None,
+        "next_action": "collect_info",
+        "conversation_history": [
+            {"role": "user", "content": "My budget is 80 lakh"},
+            {"role": "assistant", "content": "Thanks! What timeline?"},
+        ],
+    })
+    mock_graph.checkpointer = MagicMock()
+    mock_graph.checkpointer.adelete_thread = AsyncMock()
+
+    with patch("app.agent.graph.get_graph", return_value=mock_graph), \
+         patch("app.agent.graph.memory_service.save_state", _fake_save), \
+         patch("app.agent.graph.memory_service.load_state", _fake_load):
+        result = await run_agent("budget-test", "My budget is 80 lakh")
+        await _fake_save("budget-test", result)
+
+    saved = store["budget-test"]
+    assert saved.get("budget") == 8_000_000.0, (
+        f"budget should be 8000000 after parse, got {saved.get('budget')!r}"
+    )
+    # Verify it's a float, not a string
+    assert isinstance(saved.get("budget"), float), (
+        f"budget must be a float for DOUBLE PRECISION column, got {type(saved.get('budget'))}"
+    )
+
+
+async def test_save_state_fails_loudly_on_unparseable_budget():
+    """Regression: unparseable budget values must return None (not crash or
+    silently pass a string) so the DB column does not receive a bad value."""
+    from app.agent.nodes.helpers import parse_budget
+
+    assert parse_budget("garbage") is None
+    assert parse_budget("₹₹₹") is None
+    assert parse_budget("1.2.3") is None

@@ -1,4 +1,4 @@
-.venv
+uvicorn.venv
 .venv-1
 venv
 env

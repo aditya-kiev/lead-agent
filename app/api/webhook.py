@@ -30,10 +30,14 @@ async def start_conversation(
             session_id, "Hi, I'm interested in your services.", payload.channel
         )
 
+        state_persisted = True
         try:
             await memory_service.save_state(session_id, result)
         except Exception as db_err:
-            logger.warning("save_state failed: %s", db_err)
+            state_persisted = False
+            logger.exception(
+                "save_state failed for session %s: %s", session_id, db_err
+            )
 
         last_message = ""
         if result.get("conversation_history"):
@@ -46,6 +50,7 @@ async def start_conversation(
             session_id=session_id,
             message=last_message or "Hello! How can I help you today?",
             lead_status=result.get("lead_status"),
+            state_persisted=state_persisted,
         )
     except GeminiRateLimitError as e:
         logger.exception("start_conversation Gemini rate limited")
@@ -66,10 +71,15 @@ async def handle_message(
     try:
         result = await run_agent(payload.session_id, payload.message, payload.channel)
 
+        state_persisted = True
         try:
             await memory_service.save_state(payload.session_id, result)
         except Exception as db_err:
-            logger.warning("save_state failed: %s", db_err)
+            state_persisted = False
+            logger.exception(
+                "save_state failed for session %s: %s",
+                payload.session_id, db_err,
+            )
 
         last_message = ""
         if result.get("conversation_history"):
@@ -86,6 +96,7 @@ async def handle_message(
             meeting_time=result.get("meeting_time"),
             human_escalated=result.get("human_escalated", False),
             next_action=result.get("next_action"),
+            state_persisted=state_persisted,
         )
     except GeminiRateLimitError as e:
         logger.exception("handle_message Gemini rate limited")

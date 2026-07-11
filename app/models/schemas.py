@@ -35,6 +35,7 @@ class StartConversationOut(BaseModel):
     session_id: str
     message: str
     lead_status: str | None = None
+    state_persisted: bool = True
 
 
 class MessageOut(BaseModel):
@@ -45,6 +46,7 @@ class MessageOut(BaseModel):
     meeting_time: str | None = None
     human_escalated: bool = False
     next_action: str | None = None
+    state_persisted: bool = True
 
 
 class ConversationHistoryOut(BaseModel):
