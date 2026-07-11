@@ -175,14 +175,19 @@ async def test_info_collection_does_not_loop_on_partial_data():
     mock_model = MagicMock()
     mock_model.ainvoke = AsyncMock(return_value=mock_response)
 
+    mock_graph = MagicMock()
+    mock_graph.ainvoke = AsyncMock(return_value={
+        "missing_fields": ["company_name", "budget", "timeline", "problem_statement", "industry"],
+        "conversation_history": [{"role": "assistant", "content": "What's your company name?"}],
+        "current_node": "info_collection",
+    })
+    mock_graph.checkpointer = MagicMock()
+    mock_graph.checkpointer.adelete_thread = AsyncMock()
+
     with patch("app.agent.graph.ChatGoogleGenerativeAI", return_value=mock_model), \
          patch("app.agent.graph.get_entry_point", return_value="info_collection"), \
          patch("app.agent.graph.memory_service.load_state", new_callable=AsyncMock, return_value=None), \
-         patch("app.agent.graph.get_graph", return_value=MagicMock(ainvoke=AsyncMock(return_value={
-             "missing_fields": ["company_name", "budget", "timeline", "problem_statement", "industry"],
-             "conversation_history": [{"role": "assistant", "content": "What's your company name?"}],
-             "current_node": "info_collection",
-         }))):
+         patch("app.agent.graph.get_graph", return_value=mock_graph):
 
         from app.agent.graph import run_agent
         result = await run_agent("test-partial", "My name is Alice")

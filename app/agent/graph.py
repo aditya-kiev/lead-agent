@@ -246,8 +246,23 @@ async def run_agent(session_id: str, message: str, channel: str = "web") -> dict
     # On every incoming message we load persisted state (lead fields, conversation_stage,
     # current_node, etc.) and merge it into the initial state dict. This survives process
     # restarts and multiple workers (e.g. Railway deployment). The LangGraph MemorySaver
-    # checkpointer is kept for within-ainvoke consistency but is NOT relied upon across
-    # HTTP requests.
+    # checkpointer is NOT relied upon across HTTP requests — it only provides within-
+    # ainvoke consistency for the additive reducers (operator.add on conversation_history).
+    #
+    # BUG PREVENTION: the process-wide MemorySaver holds a checkpoint keyed by
+    # thread_id=session_id.  On a subsequent turn we reload the full conversation_history
+    # from Postgres and feed it into turn_input.  If we keep the old checkpoint, the
+    # operator.add reducer concatenates the checkpoint's history (already accumulated
+    # from the previous ainvoke) with the freshly Postgres-loaded history, producing
+    # duplicate entries that compound every turn.
+    #
+    # Fix: delete the checkpoint for this thread BEFORE every call.  The graph starts
+    # fresh from our Postgres-reconstituted turn_input, and within ainvoke the
+    # MemorySaver still provides consistency across nodes in the same turn.
+    graph = get_graph()
+    if graph.checkpointer is not None:
+        await graph.checkpointer.adelete_thread(session_id)
+
     turn_input = get_initial_state(session_id, channel)
     # store simple dicts for messages to satisfy the TypedDict expected by the graph
     turn_input["messages"] = [{"role": "user", "content": message}]
@@ -269,7 +284,7 @@ async def run_agent(session_id: str, message: str, channel: str = "web") -> dict
         turn_input.get("conversation_history") or []
     ) + [{"role": "user", "content": message}]
 
-    result = await get_graph().ainvoke(turn_input, config)
+    result = await graph.ainvoke(turn_input, config)
     gemini_calls = gemini_call_counter.get()
     logger.debug(
         "run_agent complete: lead_status=%s stage=%s gemini_calls=%s",
