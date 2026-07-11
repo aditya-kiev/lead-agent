@@ -57,7 +57,7 @@ def create_qualification_node(model: ChatGoogleGenerativeAI):
             timeline=state.get("timeline"),
             industry=state.get("industry"),
             problem_statement=state.get("problem_statement"),
-            intent=IntentType(state.get("lead_intent", "unknown")),
+            intent=IntentType(state.get("lead_intent") or "unknown"),
         )
 
         score_result = compute_lead_score(score_data)
@@ -75,7 +75,7 @@ def create_qualification_node(model: ChatGoogleGenerativeAI):
                 budget=state.get("budget", "Unknown"),
                 timeline=state.get("timeline", "Unknown"),
                 problem_statement=state.get("problem_statement", "Unknown"),
-                lead_intent=state.get("lead_intent", "unknown"),
+                lead_intent=state.get("lead_intent") or "unknown",
             )),
             HumanMessage(content=f"Lead context:\n{context}\n\nGenerate a qualification summary for this lead."),
         ])
