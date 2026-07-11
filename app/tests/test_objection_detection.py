@@ -62,3 +62,15 @@ async def test_llm_returns_no_objection(mock_model):
     assert result.has_objection is False
     assert result.objection_type is None
     assert result.source == "llm"
+
+
+async def test_llm_list_content_does_not_crash(mock_model):
+    """Regression: Gemini sometimes returns AIMessage.content as a
+    list[dict] (e.g. content=[{"type": "text", "text": "pricing"}])
+    rather than a plain string. The function must handle this without
+    raising AttributeError('list' object has no attribute 'strip')."""
+    mock_model.ainvoke.return_value.content = [{"type": "text", "text": "pricing"}]
+    result = await detect_objection("I'm wondering about the implementation timeline", mock_model)
+    assert result.has_objection is True
+    assert result.objection_type == "pricing"
+    assert result.source == "llm"

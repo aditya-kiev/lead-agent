@@ -144,7 +144,8 @@ async def detect_objection(
         ),
         HumanMessage(content=user_message),
     ])
-    text = response.content.strip().lower()
+    from app.agent.nodes.helpers import safe_text
+    text = safe_text(response.content).strip().lower()
 
     for ot in OBJECTION_TYPES:
         if ot in text:
