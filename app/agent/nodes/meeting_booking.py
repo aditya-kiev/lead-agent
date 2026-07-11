@@ -3,7 +3,7 @@ import logging
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.agent.prompts.templates import MEETING_BOOKING_SYSTEM_PROMPT
+from app.agent.prompts.templates import get_prompts
 from app.agent.state import AgentState
 from app.agent.tools.calendar import get_available_slots
 from app.agent.nodes.helpers import safe_text
@@ -22,7 +22,7 @@ def create_meeting_booking_node(model: ChatGoogleGenerativeAI):
         slot_labels = "\n".join(s["label"] for s in slots[:9])
 
         response = await model.ainvoke([
-            SystemMessage(content=MEETING_BOOKING_SYSTEM_PROMPT.format(
+            SystemMessage(content=get_prompts().MEETING_BOOKING_SYSTEM_PROMPT.format(
                 lead_name=state.get("lead_name", "there"),
                 company_name=state.get("company_name", "your company"),
                 lead_status=state.get("lead_status", "new"),

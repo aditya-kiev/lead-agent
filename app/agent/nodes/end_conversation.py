@@ -3,7 +3,7 @@ import logging
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.agent.prompts.templates import END_CONVERSATION_PROMPT
+from app.agent.prompts.templates import get_prompts
 from app.agent.state import AgentState
 from app.agent.nodes.helpers import safe_text
 from app.agent.tools.crm import update_crm
@@ -30,7 +30,7 @@ def create_end_conversation_node(model: ChatGoogleGenerativeAI):
         logger.info("NODE end_conversation: CRM updated")
 
         response = await model.ainvoke([
-            SystemMessage(content=END_CONVERSATION_PROMPT.format(
+            SystemMessage(content=get_prompts().END_CONVERSATION_PROMPT.format(
                 lead_name=state.get("lead_name", "there"),
                 company_name=state.get("company_name", "your company"),
                 lead_status=state.get("lead_status", "new"),

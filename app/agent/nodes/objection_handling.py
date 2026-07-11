@@ -3,7 +3,7 @@ import logging
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.agent.prompts.templates import OBJECTION_HANDLING_SYSTEM_PROMPT
+from app.agent.prompts.templates import get_prompts
 from app.agent.state import AgentState
 from app.agent.nodes.helpers import safe_text
 
@@ -32,7 +32,7 @@ def create_objection_handling_node(model: ChatGoogleGenerativeAI):
             }
 
         response = await model.ainvoke([
-            SystemMessage(content=OBJECTION_HANDLING_SYSTEM_PROMPT.format(
+            SystemMessage(content=get_prompts().OBJECTION_HANDLING_SYSTEM_PROMPT.format(
                 objection_type=objection_type,
                 lead_name=state.get("lead_name", "there"),
                 company_name=state.get("company_name", "your company"),

@@ -116,6 +116,56 @@ async def test_qualification_node_accepts_none_lead_intent():
     assert result.get("lead_status") is not None
 
 
+def test_insurance_monthly_premium_scores_warm():
+    """A $150/mo insurance lead with a 2-week timeline must score >= warm
+    (previously this would miscale as cold because the budget was compared
+    to SaaS deal-size bands and timeline '2 weeks' was unrecognised)."""
+    result = compute_lead_score(LeadScoreIn(
+        budget=150,
+        timeline="Need coverage within 2 weeks",
+        industry="auto insurance",
+        problem_statement="Just bought a new car, need comprehensive coverage including collision and liability.",
+        intent=IntentType.PURCHASE,
+        vertical="insurance",
+    ))
+    assert result.score >= 0.4, f"Insurance premium lead scored {result.score}, expected >= 0.4 (warm)"
+    assert result.status in (LeadStatus.WARM, LeadStatus.HOT)
+
+
+def test_real_estate_buyer_with_80lakh_2months_scores_hot():
+    """A real-estate buyer with an 80L budget and 2-month timeline must
+    score hot, not warm (previously budget 8000000 hit the generic
+    50000 band and timeline '2 months' was unrecognised)."""
+    result = compute_lead_score(LeadScoreIn(
+        budget=8_000_000,
+        timeline="planning to buy in 2 months",
+        industry="buying 3BHK apartment",
+        problem_statement="Looking for a 3-bedroom apartment in Noida sector 62, pre-approved for 80L by SBI, need to close within 2 months, ready to move forward.",
+        intent=IntentType.PURCHASE,
+        vertical="real_estate",
+    ))
+    # Budget 0.35 + timeline 0.10 + problem 0.15 + intent 0.15 = 0.75 >= 0.70
+    assert result.score >= 0.7, f"Real estate buyer scored {result.score}, expected >= 0.7 (hot)"
+    assert result.status == LeadStatus.HOT
+
+
+def test_individual_lead_no_icp_penalty():
+    """An individual consumer lead (lead_type='individual') should not be
+    penalized for lacking an ICP industry. The lost industry weight (0.20)
+    is replaced by a vertical-specific individual signal."""
+    result = compute_lead_score(LeadScoreIn(
+        budget=8_000_000,
+        timeline="2 months",
+        industry="buying a house",
+        problem_statement="Looking for a 3BHK in Noida, budget around 80 lakh.",
+        intent=IntentType.PURCHASE,
+        vertical="real_estate",
+        lead_type="individual",
+    ))
+    assert result.score >= 0.4, f"Individual buyer scored {result.score}, expected >= 0.4"
+    assert "Individual vertical signal" in result.reasoning
+
+
 async def test_lead_intent_survives_postgres_round_trip():
     """Multi-turn regression: lead_intent detected in turn 1 must persist
     through Postgres save/load so qualification_node sees the real intent.

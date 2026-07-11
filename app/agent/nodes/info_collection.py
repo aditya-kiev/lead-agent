@@ -5,9 +5,10 @@ import re
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.agent.prompts.templates import COMBINED_INFO_COLLECTION_PROMPT
+from app.agent.prompts.templates import get_prompts
 from app.agent.state import AgentState
 from app.agent.nodes.helpers import parse_budget, safe_text
+from app.config.settings import settings as _settings
 
 logger = logging.getLogger("graph.node.info_collection")
 
@@ -154,7 +155,7 @@ def create_info_collection_node(model: ChatGoogleGenerativeAI):
             prompt_kwargs["missing_fields"] = [first_missing]
 
         response = await model.ainvoke([
-            SystemMessage(content=COMBINED_INFO_COLLECTION_PROMPT.format(**prompt_kwargs)),
+            SystemMessage(content=get_prompts().COMBINED_INFO_COLLECTION_PROMPT.format(**prompt_kwargs)),
             HumanMessage(content=user_message),
         ])
         text = safe_text(response.content)

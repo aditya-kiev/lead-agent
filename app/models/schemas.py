@@ -14,6 +14,7 @@ class LeadStatus(str, Enum):
 
 class IntentType(str, Enum):
     PURCHASE = "purchase"
+    SELL = "sell"
     INFORMATION = "information"
     SUPPORT = "support"
     PARTNERSHIP = "partnership"
@@ -78,6 +79,8 @@ class LeadScoreIn(BaseModel):
     industry: str | None = None
     problem_statement: str | None = None
     intent: IntentType = IntentType.UNKNOWN
+    vertical: str = "generic"
+    lead_type: str | None = None
 
 
 class LeadScoreOut(BaseModel):

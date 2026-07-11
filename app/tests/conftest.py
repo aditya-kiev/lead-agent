@@ -14,7 +14,7 @@ def mock_openai():
     mock_response.content = "This is a mock response from the AI assistant."
     mock_instance.ainvoke = AsyncMock(return_value=mock_response)
 
-    with patch("app.agent.graph.ChatGoogleGenerativeAI", return_value=mock_instance):
+    with patch("langchain_google_genai.ChatGoogleGenerativeAI", return_value=mock_instance):
         yield
 
 

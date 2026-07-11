@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     api_key: str = ""
     allowed_origins: list[str] = []
 
+    vertical: str = "generic"
+    business_name: str = "our company"
+
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_from_number: str = ""

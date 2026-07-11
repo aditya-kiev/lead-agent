@@ -3,9 +3,10 @@ import logging
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.agent.prompts.templates import COMBINED_GREETING_PROMPT
+from app.agent.prompts.templates import get_prompts
 from app.agent.state import AgentState
 from app.agent.nodes.helpers import safe_text
+from app.config.settings import settings as _settings
 
 logger = logging.getLogger("graph.node.greeting")
 
@@ -20,7 +21,7 @@ def _parse_combined_response(text: str) -> tuple[str, str, str]:
         stripped = line.strip()
         if stripped.upper().startswith("INTENT:"):
             raw = stripped.split(":", 1)[1].strip().lower()
-            for candidate in ["purchase", "information", "support", "partnership"]:
+            for candidate in ["purchase", "sell", "information", "support", "partnership"]:
                 if candidate in raw:
                     intent = candidate
                     break
@@ -59,8 +60,8 @@ def create_greeting_node(model: ChatGoogleGenerativeAI):
 
         logger.info("NODE greeting: LLM call 1/1 (combined intent + generation)")
         response = await model.ainvoke([
-            SystemMessage(content=COMBINED_GREETING_PROMPT.format(
-                company_name="our company",
+            SystemMessage(content=get_prompts().COMBINED_GREETING_PROMPT.format(
+                company_name=_settings.business_name,
                 lead_status=state.get("lead_status", "new"),
                 known_info=str(known_info) if known_info else "none yet",
                 input=user_message,

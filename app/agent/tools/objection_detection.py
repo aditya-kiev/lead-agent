@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.agent.prompts.templates import OBJECTION_DETECTION_PROMPT
+from app.agent.prompts.templates import get_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ async def detect_objection(
     # Ambiguous (match_type is None) — escalate to LLM
     response = await model.ainvoke([
         SystemMessage(
-            content=OBJECTION_DETECTION_PROMPT.format(input=user_message)
+            content=get_prompts().OBJECTION_DETECTION_PROMPT.format(input=user_message)
         ),
         HumanMessage(content=user_message),
     ])

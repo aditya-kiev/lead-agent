@@ -3,10 +3,11 @@ import logging
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.agent.prompts.templates import QUALIFICATION_SYSTEM_PROMPT
+from app.agent.prompts.templates import get_prompts
 from app.agent.state import AgentState
 from app.agent.tools.lead_scoring import compute_lead_score
 from app.agent.nodes.helpers import safe_text
+from app.config.settings import settings
 from app.models.schemas import IntentType, LeadScoreIn
 
 logger = logging.getLogger("graph.node.qualification")
@@ -51,7 +52,8 @@ def create_qualification_node(model: ChatGoogleGenerativeAI):
             }
 
         if not _all_fields_populated(state):
-            missing = [f for f in REQUIRED_FIELDS if not state.get(f)]
+            required = _required_fields_for(state.get("lead_type"))
+            missing = [f for f in required if not state.get(f)]
             return {
                 "missing_fields": missing,
                 "next_action": "collect_info",
@@ -65,6 +67,8 @@ def create_qualification_node(model: ChatGoogleGenerativeAI):
             industry=state.get("industry"),
             problem_statement=state.get("problem_statement"),
             intent=IntentType(state.get("lead_intent") or "unknown"),
+            lead_type=state.get("lead_type"),
+            vertical=settings.vertical,
         )
 
         score_result = compute_lead_score(score_data)
@@ -75,7 +79,7 @@ def create_qualification_node(model: ChatGoogleGenerativeAI):
         ) if state.get("conversation_history") else ""
 
         response = await model.ainvoke([
-            SystemMessage(content=QUALIFICATION_SYSTEM_PROMPT.format(
+            SystemMessage(content=get_prompts().QUALIFICATION_SYSTEM_PROMPT.format(
                 lead_name=state.get("lead_name", "Unknown"),
                 company_name=state.get("company_name", "Unknown"),
                 industry=state.get("industry", "Unknown"),
