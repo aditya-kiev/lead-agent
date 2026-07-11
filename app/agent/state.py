@@ -20,6 +20,7 @@ class AgentState(TypedDict):
     qualification_score: float | None
     lead_status: str | None
     lead_intent: str | None
+    lead_type: str | None
 
     messages: Annotated[list[dict[str, Any]], add_messages]
     conversation_history: Annotated[list[dict[str, Any]], operator.add]
@@ -51,6 +52,7 @@ def get_initial_state(session_id: str, channel: str = "web") -> AgentState:
         "qualification_score": None,
         "lead_status": None,
         "lead_intent": None,
+        "lead_type": None,
         "messages": [],
         "conversation_history": [],
         "current_node": "greeting",

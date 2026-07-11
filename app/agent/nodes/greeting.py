@@ -10,9 +10,10 @@ from app.agent.nodes.helpers import safe_text
 logger = logging.getLogger("graph.node.greeting")
 
 
-def _parse_combined_response(text: str) -> tuple[str, str]:
-    """Extract intent and reply from the combined prompt response."""
+def _parse_combined_response(text: str) -> tuple[str, str, str]:
+    """Extract intent, lead_type, and reply from the combined prompt response."""
     intent = "unknown"
+    lead_type = "company"
     reply = text.strip()
 
     for line in text.split("\n"):
@@ -23,10 +24,16 @@ def _parse_combined_response(text: str) -> tuple[str, str]:
                 if candidate in raw:
                     intent = candidate
                     break
+        elif stripped.upper().startswith("LEAD_TYPE:"):
+            raw = stripped.split(":", 1)[1].strip().lower()
+            if "individual" in raw:
+                lead_type = "individual"
+            else:
+                lead_type = "company"
         elif stripped.upper().startswith("REPLY:"):
             reply = stripped.split(":", 1)[1].strip()
 
-    return intent, reply
+    return intent, lead_type, reply
 
 
 def create_greeting_node(model: ChatGoogleGenerativeAI):
@@ -63,16 +70,17 @@ def create_greeting_node(model: ChatGoogleGenerativeAI):
         text = safe_text(response.content)
         logger.info("NODE greeting: response=%s", text[:100])
 
-        lead_intent, reply = _parse_combined_response(text)
+        lead_intent, lead_type, reply = _parse_combined_response(text)
 
-        logger.info("NODE greeting EXIT: session=%s lead_intent=%s",
-                    state.get("session_id"), lead_intent)
+        logger.info("NODE greeting EXIT: session=%s lead_intent=%s lead_type=%s",
+                    state.get("session_id"), lead_intent, lead_type)
         return {
             "messages": [AIMessage(content=reply)],
             "conversation_history": [
                 {"role": "assistant", "content": reply},
             ],
             "lead_intent": lead_intent,
+            "lead_type": lead_type,
             "current_node": "greeting",
             "next_action": "collect_info",
             "conversation_stage": "collecting",

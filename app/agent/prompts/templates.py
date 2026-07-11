@@ -213,10 +213,12 @@ Rules:
 - Do not ask for personal information yet
 
 First, determine the lead's intent from their message. Options: purchase, information, support, partnership, unknown.
+Also determine if the lead is an individual consumer or representing a business.
 Then, generate an appropriate response.
 
 Format your reply EXACTLY as:
 INTENT: [intent]
+LEAD_TYPE: individual|company
 REPLY: [your greeting]
 
 Current context:

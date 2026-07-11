@@ -11,7 +11,7 @@ from app.models.schemas import IntentType, LeadScoreIn
 
 logger = logging.getLogger("graph.node.qualification")
 
-REQUIRED_FIELDS = [
+_BASE_REQUIRED_FIELDS = [
     "lead_name",
     "company_name",
     "industry",
@@ -21,8 +21,15 @@ REQUIRED_FIELDS = [
 ]
 
 
+def _required_fields_for(lead_type: str | None) -> list[str]:
+    if lead_type == "individual":
+        return [f for f in _BASE_REQUIRED_FIELDS if f != "company_name"]
+    return list(_BASE_REQUIRED_FIELDS)
+
+
 def _all_fields_populated(state: AgentState) -> bool:
-    for field in REQUIRED_FIELDS:
+    required = _required_fields_for(state.get("lead_type"))
+    for field in required:
         val = state.get(field)
         if field == "budget":
             if val is None:

@@ -299,6 +299,69 @@ async def test_cold_lead_gets_new_replies_on_every_turn():
         )
 
 
+async def test_individual_buyer_skips_company_name():
+    """An individual consumer (lead_type='individual') must reach
+    qualification without ever being asked for a company name.
+
+    The greeting node classifies the lead as individual → info_collection
+    drops company_name from its field priority → qualification drops it
+    from its required fields.
+    """
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.agent.graph import run_agent
+    from app.agent.state import get_initial_state
+    from app.agent.nodes.qualification import _required_fields_for
+    from app.agent.nodes.info_collection import _field_priority_for, _field_map_for
+
+    # --- Unit checks ---
+    assert "company_name" not in _required_fields_for("individual")
+    assert "company_name" in _required_fields_for("company")
+    assert "company_name" not in _field_priority_for("individual")
+    assert "company_name" not in _field_map_for("individual")
+
+    # --- Integration: info_collection with lead_type='individual' ---
+    # Mock the greeting to skip (returning user) and inject lead_type
+    mock_graph = MagicMock()
+    mock_graph.ainvoke = AsyncMock(return_value={
+        "lead_name": "Priya",
+        "lead_type": "individual",
+        "industry": "real estate",
+        "budget": 5000000.0,
+        "timeline": "3 months",
+        "problem_statement": "Looking for a 2BHK apartment",
+        "company_name": None,
+        "missing_fields": [],
+        "current_node": "qualification",
+        "next_action": "qualify",
+        "conversation_stage": "qualified",
+        "lead_status": "hot",
+        "qualification_score": 0.85,
+        "booking_confirmed": False,
+        "meeting_time": None,
+        "human_escalated": False,
+        "objection_type": None,
+        "conversation_history": [
+            {"role": "user", "content": "Hi, I'm looking for an apartment"},
+            {"role": "assistant", "content": "Great, what's your name?"},
+        ],
+    })
+    mock_graph.checkpointer = MagicMock()
+    mock_graph.checkpointer.adelete_thread = AsyncMock()
+
+    with patch("app.agent.graph.get_graph", return_value=mock_graph), \
+         patch("app.agent.graph.memory_service.load_state", new_callable=AsyncMock, return_value=None):
+        result = await run_agent("individual-test", "Hi, I'm looking for an apartment")
+
+    # The individual lead must reach qualification with company_name=None
+    # and no missing_fields for company_name
+    assert result.get("lead_type") == "individual"
+    missing = result.get("missing_fields", [])
+    assert "company_name" not in missing, (
+        f"Individual lead should not be asked for company_name, "
+        f"got missing_fields={missing}"
+    )
+
+
 def test_gemini_timeout_is_configured():
     """ChatGoogleGenerativeAI must be constructed with a timeout so hanging
     Gemini calls raise an exception instead of blocking forever."""

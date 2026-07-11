@@ -11,7 +11,7 @@ from app.agent.nodes.helpers import parse_budget, safe_text
 
 logger = logging.getLogger("graph.node.info_collection")
 
-_FIELD_MAP = {
+_BASE_FIELD_MAP = {
     "Name": "lead_name",
     "Company": "company_name",
     "Industry": "industry",
@@ -20,7 +20,7 @@ _FIELD_MAP = {
     "Problem": "problem_statement",
 }
 
-FIELD_PRIORITY = [
+_BASE_FIELD_PRIORITY = [
     "lead_name",
     "company_name",
     "industry",
@@ -28,6 +28,18 @@ FIELD_PRIORITY = [
     "budget",
     "timeline",
 ]
+
+
+def _field_map_for(lead_type: str | None) -> dict[str, str]:
+    if lead_type == "individual":
+        return {k: v for k, v in _BASE_FIELD_MAP.items() if v != "company_name"}
+    return dict(_BASE_FIELD_MAP)
+
+
+def _field_priority_for(lead_type: str | None) -> list[str]:
+    if lead_type == "individual":
+        return [f for f in _BASE_FIELD_PRIORITY if f != "company_name"]
+    return list(_BASE_FIELD_PRIORITY)
 
 
 def _extract_json(text: str) -> dict | None:
@@ -42,9 +54,10 @@ def _extract_json(text: str) -> dict | None:
         return None
 
 
-def _compute_missing(merged: dict) -> list[str]:
+def _compute_missing(merged: dict, lead_type: str | None = None) -> list[str]:
+    priority = _field_priority_for(lead_type)
     missing = []
-    for field in FIELD_PRIORITY:
+    for field in priority:
         val = merged.get(field)
         if field == "budget":
             if val is None:
@@ -84,10 +97,11 @@ def create_info_collection_node(model: ChatGoogleGenerativeAI):
         budget = state.get("budget")
         timeline = state.get("timeline")
         problem_statement = state.get("problem_statement")
+        lead_type = state.get("lead_type")
 
         logger.info(
-            "NODE info_collection ENTERED: session=%s user_msg=%s",
-            state.get("session_id"), user_message[:60],
+            "NODE info_collection ENTERED: session=%s lead_type=%s user_msg=%s",
+            state.get("session_id"), lead_type, user_message[:60],
         )
 
         conv_text = "\n".join(
@@ -103,7 +117,8 @@ def create_info_collection_node(model: ChatGoogleGenerativeAI):
             "problem_statement": problem_statement,
         }
 
-        missing_fields = _compute_missing(merged)
+        missing_fields = _compute_missing(merged, lead_type)
+        field_map = _field_map_for(lead_type)
 
         if not missing_fields:
             logger.info("NODE info_collection: all fields present, routing to qualification")
@@ -121,18 +136,25 @@ def create_info_collection_node(model: ChatGoogleGenerativeAI):
             first_missing,
         )
 
+        prompt_kwargs = {
+            "lead_name": merged["lead_name"] or "not provided",
+            "company_name": merged["company_name"] or "not provided",
+            "industry": merged["industry"] or "not provided",
+            "budget": merged["budget"] or "not provided",
+            "timeline": merged["timeline"] or "not provided",
+            "problem_statement": merged["problem_statement"] or "not provided",
+            "messages": conv_text,
+            "input": user_message,
+        }
+        if lead_type == "individual":
+            # Don't waste a turn asking for company_name
+            missing = [f for f in [first_missing] if f != "company_name"] or ["industry"]
+            prompt_kwargs["missing_fields"] = missing
+        else:
+            prompt_kwargs["missing_fields"] = [first_missing]
+
         response = await model.ainvoke([
-            SystemMessage(content=COMBINED_INFO_COLLECTION_PROMPT.format(
-                lead_name=merged["lead_name"] or "not provided",
-                company_name=merged["company_name"] or "not provided",
-                industry=merged["industry"] or "not provided",
-                budget=merged["budget"] or "not provided",
-                timeline=merged["timeline"] or "not provided",
-                problem_statement=merged["problem_statement"] or "not provided",
-                missing_fields=[first_missing],
-                messages=conv_text,
-                input=user_message,
-            )),
+            SystemMessage(content=COMBINED_INFO_COLLECTION_PROMPT.format(**prompt_kwargs)),
             HumanMessage(content=user_message),
         ])
         text = safe_text(response.content)
@@ -142,7 +164,7 @@ def create_info_collection_node(model: ChatGoogleGenerativeAI):
 
         updates_dict: dict = {}
         if updates:
-            for label, state_field in _FIELD_MAP.items():
+            for label, state_field in field_map.items():
                 val = updates.get(label) or updates.get(state_field)
                 if val is not None:
                     if state_field == "budget":
@@ -150,7 +172,7 @@ def create_info_collection_node(model: ChatGoogleGenerativeAI):
                     updates_dict[state_field] = val
 
         new_merged = {**merged, **updates_dict}
-        new_missing = _compute_missing(new_merged)
+        new_missing = _compute_missing(new_merged, lead_type)
 
         logger.info(
             "NODE info_collection EXIT: updates=%s missing=%s reply=%s",

@@ -22,6 +22,7 @@ class LeadConversation(Base):
     qualification_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     lead_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
     lead_intent: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    lead_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     booking_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     meeting_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     conversation_history: Mapped[list | None] = mapped_column(JSON, nullable=True)
