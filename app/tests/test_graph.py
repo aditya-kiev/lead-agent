@@ -150,19 +150,21 @@ def test_route_after_meeting_ends_when_not_confirmed():
     assert route_after_meeting(state) == "end"
 
 
-def test_route_next_action_fallback_ends():
-    """Cold lead with no objection must route to END, not info_collection."""
+def test_route_next_action_cold_lead_goes_to_end():
+    """Cold lead must route to 'end' node so end_conversation_node produces a
+    real closing message, rather than bare END which silently recycles the
+    previous assistant reply forever."""
     state = get_initial_state("test-1")
     state["confidence"] = 1.0
     state["lead_status"] = "cold"
-    assert route_next_action(state) == END
+    assert route_next_action(state) == "end"
 
 
-def test_route_after_objection_fallback_ends():
-    """Non-hot/warm lead with no escalation must route to END, not info_collection."""
+def test_route_after_objection_cold_lead_goes_to_end():
+    """Cold lead after objection handling must also go to 'end' node."""
     state = get_initial_state("test-1")
     state["lead_status"] = "cold"
-    assert route_after_objection(state) == END
+    assert route_after_objection(state) == "end"
 
 
 async def test_info_collection_does_not_loop_on_partial_data():
@@ -196,6 +198,105 @@ async def test_info_collection_does_not_loop_on_partial_data():
     history = result.get("conversation_history", [])
     assistant_msgs = [m for m in history if m.get("role") == "assistant"]
     assert len(assistant_msgs) == 1, f"Expected 1 assistant reply, got {len(assistant_msgs)}: {history}"
+
+
+async def test_cold_lead_gets_new_replies_on_every_turn():
+    """Regression: a lead scored 'cold' on an earlier turn must receive a
+    new assistant reply on every subsequent message, not the same stale
+    message forever.
+
+    The bug: qualification_node's returning-user short-circuit (no
+    messages/conversation_history emitted) combined with route_next_action
+    returning bare END for cold leads means no node ever runs to generate a
+    reply.  webhook.py's last_message loop scans backward for the most recent
+    assistant entry — which is always the same one from the scoring turn.
+
+    Fix: route cold leads to the 'end' node (end_conversation_node) which
+    produces a fresh closing message every time it runs.
+    """
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from langgraph.graph import END, StateGraph
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from app.agent.state import AgentState
+    from app.agent.graph import route_next_action, route_after_objection
+
+    # ---- minimal graph that routes through the real route_next_action ----
+
+    async def _identity(state):
+        return {
+            "lead_status": "cold",
+            "current_node": "end",
+            "conversation_history": [
+                {"role": "assistant", "content": f"Thank you for your interest. At this time..."}
+            ],
+        }
+
+    async def _end_node(state):
+        c = f"Goodbye from turn {len(state.get('conversation_history', []))}"
+        return {
+            "conversation_history": [{"role": "assistant", "content": c}],
+            "current_node": "end",
+            "next_action": None,
+        }
+
+    workflow = StateGraph(AgentState)
+    workflow.add_node("handle_next", _identity)
+    workflow.add_node("end", _end_node)
+    workflow.set_entry_point("handle_next")
+    workflow.add_conditional_edges(
+        "handle_next",
+        route_next_action,
+        {"end": "end", END: END},
+    )
+    workflow.add_edge("end", END)
+    test_graph = workflow.compile(checkpointer=MemorySaver())
+
+    store: dict = {}
+
+    async def _fake_save(session_id, state):
+        store[session_id] = state
+
+    async def _fake_load(session_id):
+        return store.get(session_id)
+
+    with patch("app.agent.graph.get_graph", return_value=test_graph), \
+         patch("app.agent.graph.memory_service.save_state", _fake_save), \
+         patch("app.agent.graph.memory_service.load_state", _fake_load):
+
+        from app.agent.graph import run_agent
+
+        # Turn 1: qualification scores the lead as cold → end node runs
+        r1 = await run_agent("cold-multi", "I'm interested in your services")
+        await _fake_save("cold-multi", r1)
+        hist1 = [m for m in r1.get("conversation_history", []) if m.get("role") == "assistant"]
+        assert len(hist1) >= 1, f"Turn 1: expected at least 1 assistant msg, got {len(hist1)}"
+
+        # Turn 2: returning user, short-circuits qualification, routes cold → end
+        r2 = await run_agent("cold-multi", "What about discounts?")
+        await _fake_save("cold-multi", r2)
+        hist2 = [m for m in r2.get("conversation_history", []) if m.get("role") == "assistant"]
+
+        # MUST have a NEW assistant entry — not the same one from turn 1
+        assert len(hist2) > len(hist1), (
+            f"Turn 2: expected more assistant msgs than turn 1 "
+            f"({len(hist1)}), got {len(hist2)}"
+        )
+        assert hist2[-1]["content"] != hist1[-1]["content"], (
+            "Turn 2: assistant message must differ from turn 1 (stale reply)"
+        )
+
+        # Turn 3: another follow-up → must also get a fresh reply
+        r3 = await run_agent("cold-multi", "Can I speak to a manager?")
+        await _fake_save("cold-multi", r3)
+        hist3 = [m for m in r3.get("conversation_history", []) if m.get("role") == "assistant"]
+        assert len(hist3) > len(hist2), (
+            f"Turn 3: expected more assistant msgs than turn 2 "
+            f"({len(hist2)}), got {len(hist3)}"
+        )
+        assert hist3[-1]["content"] != hist2[-1]["content"], (
+            "Turn 3: assistant message must differ from turn 2 (stale reply)"
+        )
 
 
 def test_gemini_timeout_is_configured():

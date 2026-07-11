@@ -192,6 +192,14 @@ async def test_parse_budget_handles_indian_shorthand():
         (50000.0, 50_000.0),
         ("₹50,000", 50_000.0),
         ("₹ 80 lakh", 8_000_000),
+        ("$50,000", 50_000.0),
+        ("$ 80 lakh", 8_000_000),
+        ("80-100 lakh", 9_000_000),
+        ("50-80k", 65_000),
+        ("50k-80k", 65_000),
+        ("10-20", 15.0),
+        ("80 lakh-1 crore", 9_000_000),
+        ("80lakh-1cr", 9_000_000),
         (None, None),
         ("", None),
         ("not provided", None),
@@ -276,4 +284,7 @@ async def test_save_state_fails_loudly_on_unparseable_budget():
 
     assert parse_budget("garbage") is None
     assert parse_budget("₹₹₹") is None
+    assert parse_budget("$$$") is None
     assert parse_budget("1.2.3") is None
+    assert parse_budget("-50") is None
+    assert parse_budget("to 50") is None

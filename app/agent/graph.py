@@ -87,7 +87,8 @@ def route_next_action(state: AgentState) -> str:
     lead_status = state.get("lead_status", "")
     if lead_status in ("hot", "warm"):
         return "meeting_booking"
-
+    if lead_status == "cold":
+        return "end"
     return END
 
 
@@ -105,6 +106,8 @@ def route_after_objection(state: AgentState) -> str:
     lead_status = state.get("lead_status", "")
     if lead_status in ("hot", "warm"):
         return "meeting_booking"
+    if lead_status == "cold":
+        return "end"
     return END
 
 
