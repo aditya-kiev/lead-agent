@@ -18,12 +18,21 @@ OBJECTION_TYPES = [
     "none",
 ]
 
+# Words that indicate negative sentiment — bare/generic keywords like "budget",
+# "cost", "price" only count as objections when paired with one of these.
+_NEGATIVE_MODIFIERS = frozenset({
+    "too", "can't", "cannot", "won't", "wouldn't", "don't", "doesn't",
+    "isn't", "aren't", "wasn't", "weren't", "hasn't", "haven't", "n't",
+    "high", "low", "tight", "limited", "expensive", "overpriced",
+    "problem", "issue", "concerned", "worried", "unhappy",
+})
+
 # Cheap keyword pre-filter — catches obvious non-objections (greetings, simple
 # answers) and obvious objections (price complaints, "not now", etc.) without
 # firing an LLM call.  Only ambiguous messages escalate to the model.
 _OBJECTION_KEYWORDS = {
     "pricing": [
-        "expensive", "too much", "overpriced", "price", "cost", "budget",
+        "expensive", "too much", "overpriced",
         "can't afford", "out of range", "spend that much",
     ],
     "timing": [
@@ -36,7 +45,7 @@ _OBJECTION_KEYWORDS = {
     ],
     "competition": [
         "competitor", "alternatives", "other option", "using someone else",
-        "already have", "compare", "switch from",
+        "compare", "switch from",
     ],
     "need": [
         "don't need", "not interested", "no value", "not for us",
@@ -44,8 +53,15 @@ _OBJECTION_KEYWORDS = {
     ],
     "authority": [
         "check with", "talk to my", "discuss with", "ask my",
-        "manager", "boss", "team", "partner", "wife", "husband",
+        "boss", "partner", "wife", "husband",
     ],
+}
+
+# Bare/generic entries that only count as objections when a negative-sentiment
+# word appears somewhere in the same message.  This prevents false-positive
+# matches on normal qualification answers like "our budget is $50k".
+_OBJECTION_KEYWORDS_NEGATIVE_REQUIRED: dict[str, list[str]] = {
+    "pricing": ["price", "cost", "budget"],
 }
 
 # Phrases that almost certainly do NOT contain an objection
@@ -75,11 +91,19 @@ def _classify_message(message: str) -> _PreFilterResult:
     if any(p in msg for p in _SAFE_PHRASES) and len(msg) < 60:
         return False, None
 
-    # Objection keyword check
+    # Objection keyword check  (full-strength entries)
     for otype, keywords in _OBJECTION_KEYWORDS.items():
         for kw in keywords:
             if kw in msg:
                 return True, otype
+
+    # Objection keyword check  (require negative-sentiment co-occurrence)
+    has_negative = any(mod in msg for mod in _NEGATIVE_MODIFIERS)
+    if has_negative:
+        for otype, keywords in _OBJECTION_KEYWORDS_NEGATIVE_REQUIRED.items():
+            for kw in keywords:
+                if kw in msg:
+                    return True, otype
 
     # No strong signal either way
     return None, None

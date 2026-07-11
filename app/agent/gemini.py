@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import time
+from collections import deque
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
@@ -11,15 +13,44 @@ logger = logging.getLogger(__name__)
 # Per-turn Gemini call counter (reset per run_agent invocation)
 gemini_call_counter: ContextVar[int] = ContextVar("gemini_call_counter", default=0)
 
-# Shared concurrency limiter — caps in-flight calls to stay under the RPM ceiling
-_gemini_semaphore: asyncio.Semaphore | None = None
+# Sliding-window rate limiter — tracks timestamps of calls in the last 60 s
+# and refuses (by sleeping) once the count reaches the RPM ceiling.
+# This actually paces sequential calls, unlike a semaphore which only limits
+# concurrency (zero effect in our all-sequential pattern).
+_sliding_lock: asyncio.Lock | None = None
+_sliding_timestamps: deque[float] | None = None
 
 
-def _get_semaphore() -> asyncio.Semaphore:
-    global _gemini_semaphore
-    if _gemini_semaphore is None:
-        _gemini_semaphore = asyncio.Semaphore(int(settings.gemini_rpm_limit))
-    return _gemini_semaphore
+def _get_rate_limiter() -> tuple[asyncio.Lock, deque[float]]:
+    global _sliding_lock, _sliding_timestamps
+    if _sliding_lock is None:
+        _sliding_lock = asyncio.Lock()
+        _sliding_timestamps = deque()
+    return _sliding_lock, _sliding_timestamps
+
+
+async def _acquire_rate_limit() -> None:
+    """Wait until a slot opens in the 60-second sliding window."""
+    lock, timestamps = _get_rate_limiter()
+    rpm_limit = int(settings.gemini_rpm_limit)
+    if rpm_limit <= 0:
+        return  # disabled
+
+    while True:
+        async with lock:
+            now = time.monotonic()
+            cutoff = now - 60.0
+            while timestamps and timestamps[0] < cutoff:
+                timestamps.popleft()
+
+            if len(timestamps) < rpm_limit:
+                timestamps.append(now)
+                return
+
+            # Window is full — sleep until the oldest entry expires
+            wait = timestamps[0] + 60.0 - now
+
+        await asyncio.sleep(wait)
 
 
 class GeminiRateLimitError(Exception):
@@ -53,22 +84,56 @@ def _is_rate_limited_gemini_error(error: BaseException) -> bool:
     return False
 
 
+def _parse_client_error_retry_info(details: dict) -> float | None:
+    """Extract retry delay from ``google.genai.errors.ClientError.details``.
+
+    The dict has the shape ``{"error": {"details": [{"@type": "...RetryInfo",
+    "retryDelay": "5s"}, ...]}}`` — no protobuf involved.
+    """
+    error = details.get("error", {})
+    if not isinstance(error, dict):
+        return None
+    for detail in error.get("details", []):
+        if not isinstance(detail, dict):
+            continue
+        if detail.get("@type", "").endswith("RetryInfo"):
+            retry_delay = detail.get("retryDelay", "")
+            if not retry_delay:
+                continue
+            try:
+                if retry_delay.endswith("s"):
+                    return float(retry_delay[:-1])
+                return float(retry_delay)
+            except ValueError:
+                continue
+    return None
+
+
 def _get_retry_delay(error: BaseException) -> float | None:
     """Try to extract a server-suggested retry delay from the exception.
 
     Priority:
     1. ``retry_after`` attribute (set by google-api-core for 429 responses)
-    2. ``google.rpc.RetryInfo.retry_delay`` from protobuf details
-    3. Fall back to *None* (caller uses exponential backoff instead)
+    2. ``google.genai.ClientError`` dict-style details (``@type`` ending in
+       ``RetryInfo`` with a ``retryDelay`` string like ``"5s"``)
+    3. ``google.rpc.RetryInfo`` from protobuf ``Any`` (legacy path)
+    4. Fall back to *None* (caller uses exponential backoff instead)
     """
     for current in _iter_exception_chain(error):
         retry_after = getattr(current, "retry_after", None)
         if retry_after is not None:
             return float(retry_after)
 
-        # Try to parse RetryInfo from protobuf details
-        details = getattr(current, "details", None) or getattr(current, "error_details", None)
-        if details:
+        # google.genai.errors.ClientError exposes .details as a dict
+        details = getattr(current, "details", None)
+        if isinstance(details, dict):
+            delay = _parse_client_error_retry_info(details)
+            if delay is not None:
+                return delay
+
+        # Protobuf RetryInfo (legacy, e.g. google-api-core)
+        details = getattr(current, "error_details", None) or details
+        if details and not isinstance(details, dict):
             try:
                 from google.protobuf import any_pb2
                 from google.rpc import retry_info_pb2
@@ -91,11 +156,11 @@ def _get_retry_delay(error: BaseException) -> float | None:
 class RetryingGeminiModel:
     """Thin proxy that retries transient Gemini rate-limit failures.
 
-    Concurrency is capped by a shared module-level ``asyncio.Semaphore``
-    so that in-flight calls stay under the configured RPM ceiling
+    A sliding-window rate limiter paces every attempt through the retry loop
+    so that actual API calls stay under the configured RPM ceiling
     (``settings.gemini_rpm_limit``).  Server-suggested retry delays
-    (``Retry-After`` header, ``RetryInfo`` protobuf) are honoured when
-    available; otherwise exponential backoff is used.
+    (``Retry-After`` header, ``RetryInfo`` from ``google.genai.errors.ClientError``)
+    are honoured when available; otherwise exponential backoff is used.
     """
 
     model: Any
@@ -109,33 +174,35 @@ class RetryingGeminiModel:
         counter = gemini_call_counter
         counter.set(counter.get() + 1)
 
-        sem = _get_semaphore()
+        delay = self.initial_backoff_seconds
+        attempts = self.max_retries + 1
 
-        async with sem:
-            delay = self.initial_backoff_seconds
-            attempts = self.max_retries + 1
+        for attempt in range(1, attempts + 1):
+            # Gate every attempt through the sliding-window rate limiter —
+            # not just once per ainvoke call — so retried requests also
+            # count against the RPM ceiling.
+            await _acquire_rate_limit()
 
-            for attempt in range(1, attempts + 1):
-                try:
-                    return await self.model.ainvoke(*args, **kwargs)
-                except Exception as exc:
-                    if not _is_rate_limited_gemini_error(exc):
-                        raise
+            try:
+                return await self.model.ainvoke(*args, **kwargs)
+            except Exception as exc:
+                if not _is_rate_limited_gemini_error(exc):
+                    raise
 
-                    logger.exception(
-                        "Gemini rate limit encountered (attempt %s/%s)",
-                        attempt,
-                        attempts,
-                    )
+                logger.exception(
+                    "Gemini rate limit encountered (attempt %s/%s)",
+                    attempt,
+                    attempts,
+                )
 
-                    if attempt >= attempts:
-                        raise GeminiRateLimitError(
-                            "The AI service is temporarily rate limited. "
-                            "Please try again in a minute."
-                        ) from exc
+                if attempt >= attempts:
+                    raise GeminiRateLimitError(
+                        "The AI service is temporarily rate limited. "
+                        "Please try again in a minute."
+                    ) from exc
 
-                    # Use server-suggested delay if available, else exponential
-                    suggested = _get_retry_delay(exc)
-                    sleep_for = suggested if suggested is not None else delay
-                    await asyncio.sleep(sleep_for)
-                    delay *= 2
+                # Use server-suggested delay if available, else exponential
+                suggested = _get_retry_delay(exc)
+                sleep_for = suggested if suggested is not None else delay
+                await asyncio.sleep(sleep_for)
+                delay *= 2

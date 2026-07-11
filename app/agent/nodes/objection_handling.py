@@ -3,11 +3,15 @@ import logging
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.agent.prompts.templates import OBJECTION_DETECTION_PROMPT, OBJECTION_HANDLING_SYSTEM_PROMPT
+from app.agent.prompts.templates import OBJECTION_HANDLING_SYSTEM_PROMPT
 from app.agent.state import AgentState
 from app.agent.nodes.helpers import safe_text
 
 logger = logging.getLogger("graph.node.objection_handling")
+
+_OBJECTION_TYPES = frozenset({
+    "pricing", "timing", "trust", "competition", "need", "authority",
+})
 
 
 def create_objection_handling_node(model: ChatGoogleGenerativeAI):
@@ -16,21 +20,11 @@ def create_objection_handling_node(model: ChatGoogleGenerativeAI):
         user_message = safe_text(raw_last)
         logger.info("NODE objection_handling ENTERED: user_message=%s", user_message[:50])
 
-        detection_response = await model.ainvoke([
-            SystemMessage(content=OBJECTION_DETECTION_PROMPT.format(input=user_message)),
-            HumanMessage(content="What objection type is this?"),
-        ])
-        detection_text = safe_text(detection_response.content).lower()
-        logger.info("NODE objection_handling: detection=%s", detection_text[:80])
-
-        objection_type = "none"
-        for ot in ["pricing", "timing", "trust", "competition", "need", "authority"]:
-            if ot in detection_text:
-                objection_type = ot
-                break
-
-        if objection_type == "none":
-            logger.info("NODE objection_handling: no objection detected")
+        # Read objection_type already computed by handle_next (keyword pre-filter
+        # or LLM) — no need to re-detect from scratch.
+        objection_type = state.get("objection_type")
+        if not objection_type or objection_type not in _OBJECTION_TYPES:
+            logger.info("NODE objection_handling: no valid objection_type in state")
             return {
                 "objection_type": None,
                 "next_action": "collect_info",
