@@ -383,8 +383,8 @@
 
   const FIELDS = [
     { key: "lead_name", label: "Name" },
-    { key: "industry", label: "Industry" },
-    { key: "budget", label: "Budget", format: v => v ? "₹" + Number(v).toLocaleString("en-IN") : null },
+    { key: "industry", label: "Coverage type" },
+    { key: "budget", label: "Budget", format: v => v ? "$" + Number(v).toLocaleString("en-US") + "/mo" : null },
     { key: "timeline", label: "Timeline" },
     { key: "problem_statement", label: "Notes" },
     { key: "qualification_score", label: "Score", format: v => v != null ? (v * 100).toFixed(0) + "%" : null },

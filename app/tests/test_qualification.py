@@ -144,7 +144,7 @@ def test_real_estate_buyer_with_80lakh_2months_scores_hot():
         intent=IntentType.PURCHASE,
         vertical="real_estate",
     ))
-    # Budget 0.35 + timeline 0.10 + problem 0.15 + intent 0.15 = 0.75 >= 0.70
+    # Budget 0.35 + timeline 0.15 + problem 0.15 + intent 0.15 = 0.80 >= 0.70
     assert result.score >= 0.7, f"Real estate buyer scored {result.score}, expected >= 0.7 (hot)"
     assert result.status == LeadStatus.HOT
 

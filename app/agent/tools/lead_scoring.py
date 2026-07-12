@@ -28,14 +28,14 @@ _BUDGET_BANDS: dict[str, list[tuple[float, float]]] = {
 
 # ── Timeline / urgency (regex-based) ──────────────────────────────
 
-_URGENCY_PATTERNS: list[tuple[re.Pattern, float]] = [
+_URGENCY_KW_PATTERNS: list[tuple[re.Pattern, float | None]] = [
     (re.compile(r"\b(immediate|asap|right\s*away|urgent|now)\b", re.I), 0.20),
-    (re.compile(r"\b(this\s*month|within\s*\d+\s*days?)\b", re.I), 0.18),
-    (re.compile(r"\b(next\s*month|within\s*\d+\s*weeks?)\b", re.I), 0.15),
-    (re.compile(r"\b(this\s*quarter|in\s*\d+\s*months?)\b", re.I), 0.10),
-    (re.compile(r"\b(next\s*quarter|2\s*months?)\b", re.I), 0.05),
-    (re.compile(r"\b(\d+\s*months?|half\s*year|6\s*months)\b", re.I), 0.02),
+    (re.compile(r"\b(this\s*month|next\s*month)\b", re.I), 0.18),
+    (re.compile(r"\b(\d+)\s*days?\b", re.I), None),
 ]
+
+_WEEK_PATTERN = re.compile(r"\b(\d+)\s*weeks?\b", re.I)
+_MONTH_PATTERN = re.compile(r"\b(\d+)\s*months?\b", re.I)
 
 _INDIVIDUAL_VERTICAL_SIGNALS: dict[str, float] = {
     "real_estate": 0.15,
@@ -57,9 +57,44 @@ def _score_timeline(timeline: str | None) -> tuple[float, str]:
     if not timeline:
         return 0.0, "Timeline unknown"
     tl = timeline.lower().strip()
-    for pattern, weight in _URGENCY_PATTERNS:
-        if pattern.search(tl):
-            return weight, f"Timeline: {tl}"
+
+    # 1. High-urgency keywords
+    for pattern, weight in _URGENCY_KW_PATTERNS:
+        m = pattern.search(tl)
+        if m:
+            if weight is not None:
+                return weight, f"Timeline: {tl}"
+            n = int(m.group(1))
+            if n <= 7:
+                return 0.20, f"Timeline: {tl}"
+            if n <= 14:
+                return 0.18, f"Timeline: {tl}"
+            return 0.15, f"Timeline: {tl}"
+
+    # 2. Weeks — non-trivial urgency
+    m = _WEEK_PATTERN.search(tl)
+    if m:
+        n = int(m.group(1))
+        if n <= 4:
+            return 0.18, f"Timeline: {tl}"
+        return 0.12, f"Timeline: {tl}"
+
+    # 3. Months — scale by count (no "in"/"within" required)
+    m = _MONTH_PATTERN.search(tl)
+    if m:
+        n = int(m.group(1))
+        if n <= 2:
+            return 0.15, f"Timeline: {tl}"
+        if n <= 4:
+            return 0.10, f"Timeline: {tl}"
+        return 0.05, f"Timeline: {tl}"
+
+    # 4. Quarter / half-year keywords
+    if re.search(r"\b(this\s*quarter|next\s*quarter)\b", tl):
+        return 0.05, f"Timeline: {tl}"
+    if re.search(r"\b(half\s*year|6\s*months)\b", tl):
+        return 0.02, f"Timeline: {tl}"
+
     return 0.02, f"Timeline: {tl} (unrecognised)"
 
 
