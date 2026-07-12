@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting Lead Qualification Agent...")
+    logger.info("Starting Lead Qualification Agent (vertical=%s, business_name=%s)...",
+                settings.vertical, settings.business_name)
     if settings.database_url:
         try:
             await init_db()

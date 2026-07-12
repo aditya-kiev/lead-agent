@@ -6,6 +6,41 @@ from app.agent.graph import get_entry_point, route_after_greeting, route_after_i
 from app.agent.state import get_initial_state
 
 
+def test_parse_combined_response_defaults_to_individual_for_real_estate():
+    """Regression: a malformed/missing LEAD_TYPE: line must default to
+    'individual' for real_estate and insurance verticals (not 'company')."""
+    from app.agent.nodes.greeting import _parse_combined_response
+
+    # No LEAD_TYPE line at all
+    intent, lead_type, _ = _parse_combined_response(
+        "INTENT: purchase\nREPLY: Hi there!", vertical="real_estate"
+    )
+    assert lead_type == "individual", f"real_estate default should be individual, got {lead_type!r}"
+
+    intent, lead_type, _ = _parse_combined_response(
+        "INTENT: purchase\nREPLY: Hi there!", vertical="insurance"
+    )
+    assert lead_type == "individual", f"insurance default should be individual, got {lead_type!r}"
+
+    # Generic vertical still defaults to company
+    intent, lead_type, _ = _parse_combined_response(
+        "INTENT: purchase\nREPLY: Hi there!", vertical="generic"
+    )
+    assert lead_type == "company", f"generic default should be company, got {lead_type!r}"
+
+    # Unclear LEAD_TYPE value
+    intent, lead_type, _ = _parse_combined_response(
+        "INTENT: purchase\nLEAD_TYPE: unclear\nREPLY: Hi!", vertical="real_estate"
+    )
+    assert lead_type == "individual", f"unclear LEAD_TYPE should default to individual for real_estate, got {lead_type!r}"
+
+    # Explicit "company" still works
+    intent, lead_type, _ = _parse_combined_response(
+        "INTENT: purchase\nLEAD_TYPE: company\nREPLY: Hi!", vertical="real_estate"
+    )
+    assert lead_type == "company", f"explicit 'company' should be respected, got {lead_type!r}"
+
+
 def test_state_initialization():
     state = get_initial_state("test-123")
     assert state["session_id"] == "test-123"
@@ -359,6 +394,50 @@ async def test_individual_buyer_skips_company_name():
     assert "company_name" not in missing, (
         f"Individual lead should not be asked for company_name, "
         f"got missing_fields={missing}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_meeting_booking_does_not_self_confirm_from_earlier_ai_message():
+    """Regression: meeting_booking_node must NOT set booking_confirmed=True
+    when the last HumanMessage contains no confirmation language, even if
+    earlier AIMessages in state['messages'] contain trigger words like
+    'schedule' or 'book' (e.g. from qualification node's internal output)."""
+    from unittest.mock import AsyncMock, MagicMock
+    from langchain_core.messages import HumanMessage, AIMessage
+    from app.agent.nodes.meeting_booking import create_meeting_booking_node
+
+    state = {
+        "lead_name": "Sarah",
+        "company_name": None,
+        "lead_status": "hot",
+        "messages": [
+            HumanMessage(content="Hi, my name is Sarah, budget is 650k, moving in 3 months."),
+            AIMessage(content="Score: 0.85. Status: hot. Reasoning: strong fit. "
+                               "Recommended next action: schedule a viewing this week."),
+            HumanMessage(content="What times do you have available?"),
+        ],
+        "conversation_history": [],
+        "booking_confirmed": False,
+        "meeting_time": None,
+        "session_id": "test-self-confirm",
+    }
+
+    mock_model = MagicMock()
+    mock_model.ainvoke = AsyncMock(return_value=MagicMock(
+        content="I have slots on Tuesday at 10am, Wednesday at 2pm, or Friday at 11am. Which works best for you?",
+    ))
+
+    node = create_meeting_booking_node(mock_model)
+    result = await node(state)
+
+    # The human message "What times do you have available?" does NOT contain
+    # "yes", "confirm", "book", "schedule" etc. → booking must NOT be confirmed.
+    assert result.get("booking_confirmed") is False, (
+        f"booking_confirmed should be False but got {result.get('booking_confirmed')!r}"
+    )
+    assert result.get("meeting_time") is None, (
+        f"meeting_time should be None but got {result.get('meeting_time')!r}"
     )
 
 

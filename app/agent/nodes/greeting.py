@@ -11,10 +11,10 @@ from app.config.settings import settings as _settings
 logger = logging.getLogger("graph.node.greeting")
 
 
-def _parse_combined_response(text: str) -> tuple[str, str, str]:
+def _parse_combined_response(text: str, vertical: str = "generic") -> tuple[str, str, str]:
     """Extract intent, lead_type, and reply from the combined prompt response."""
     intent = "unknown"
-    lead_type = "company"
+    lead_type = "individual" if vertical in ("real_estate", "insurance") else "company"
     reply = text.strip()
 
     for line in text.split("\n"):
@@ -29,7 +29,7 @@ def _parse_combined_response(text: str) -> tuple[str, str, str]:
             raw = stripped.split(":", 1)[1].strip().lower()
             if "individual" in raw:
                 lead_type = "individual"
-            else:
+            elif "company" in raw or "business" in raw:
                 lead_type = "company"
         elif stripped.upper().startswith("REPLY:"):
             reply = stripped.split(":", 1)[1].strip()
@@ -71,7 +71,7 @@ def create_greeting_node(model: ChatGoogleGenerativeAI):
         text = safe_text(response.content)
         logger.info("NODE greeting: response=%s", text[:100])
 
-        lead_intent, lead_type, reply = _parse_combined_response(text)
+        lead_intent, lead_type, reply = _parse_combined_response(text, _settings.vertical)
 
         logger.info("NODE greeting EXIT: session=%s lead_intent=%s lead_type=%s",
                     state.get("session_id"), lead_intent, lead_type)

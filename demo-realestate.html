@@ -342,9 +342,9 @@
       <div class="thread" id="thread"></div>
 
       <div class="quickstarts" id="quickstarts">
-        <button data-msg="Hi, I'm looking to buy a 3BHK apartment in Noida. My budget is around 80 lakhs and I'd like to close within 2 months.">3BHK buyer — 80L budget</button>
-        <button data-msg="I'm interested in a 2BHK near Whitefield, Bangalore. What properties do you have in that area?">2BHK in Whitefield</button>
-        <button data-msg="This seems a bit out of our budget right now">Raise a budget objection</button>
+        <button data-msg="Hi, I'm looking to buy a 4-bedroom single-family home in Austin, TX. My budget is around $650,000 and I'd like to close within 3 months.">4BR home — $650k budget</button>
+        <button data-msg="I'm interested in a 2-bedroom condo near downtown Denver — what listings do you have in that area?">2BR condo in Denver</button>
+        <button data-msg="This is a bit more than I wanted to spend">Raise a budget objection</button>
       </div>
 
       <div class="composer">
@@ -384,7 +384,7 @@
   const FIELDS = [
     { key: "lead_name", label: "Name" },
     { key: "industry", label: "Property type" },
-    { key: "budget", label: "Budget", format: v => v ? "₹" + Number(v).toLocaleString("en-IN") : null },
+    { key: "budget", label: "Budget", format: v => v ? "$" + Number(v).toLocaleString("en-US") : null },
     { key: "timeline", label: "Timeline" },
     { key: "problem_statement", label: "Notes" },
     { key: "qualification_score", label: "Score", format: v => v != null ? (v * 100).toFixed(0) + "%" : null },
@@ -514,7 +514,7 @@
   });
 
   window.addEventListener("DOMContentLoaded", () => {
-    sendMessage("Hi, I'm looking to buy a 3BHK apartment in Noida. My budget is around 80 lakhs and I'd like to close within 2 months.");
+    sendMessage("Hi, I'm looking to buy a 4-bedroom single-family home in Austin, TX. Budget is around $650,000 and I'd like to close within 3 months.");
   });
 </script>
 </body>

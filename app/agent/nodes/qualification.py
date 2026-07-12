@@ -96,7 +96,6 @@ def create_qualification_node(model: ChatGoogleGenerativeAI):
             "qualification_score": score_result.score,
             "lead_status": score_result.status.value,
             "messages": [AIMessage(content=response.content)],
-            "conversation_history": [{"role": "assistant", "content": response_text}],
             "current_node": "qualification",
             "next_action": "handle_next",
             "conversation_stage": "qualified",

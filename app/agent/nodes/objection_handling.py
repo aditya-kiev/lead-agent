@@ -16,7 +16,8 @@ _OBJECTION_TYPES = frozenset({
 
 def create_objection_handling_node(model: ChatGoogleGenerativeAI):
     async def objection_handling_node(state: AgentState) -> dict:
-        raw_last = state["messages"][-1].content if state["messages"] else ""
+        user_msgs = [m for m in state.get("messages", []) if isinstance(m, HumanMessage)]
+        raw_last = user_msgs[-1].content if user_msgs else ""
         user_message = safe_text(raw_last)
         logger.info("NODE objection_handling ENTERED: user_message=%s", user_message[:50])
 

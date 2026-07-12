@@ -16,14 +16,17 @@ def safe_text(content):
     return str(content)
 
 
-_INDIAN_NUMBER_RE = re.compile(
-    r"^(?P<value>[\d.]+)\s*(?P<unit>lakh|L|crore|Cr|cr|k|K)?$"
+_PERIODIC_RE = re.compile(r"\s*(/mo|/month|/yr|/year|per\s*month|per\s*year)\s*$", re.I)
+
+_NUMBER_RE = re.compile(
+    r"^(?P<value>[\d.]+)\s*(?P<unit>m|mn|million|M|lakh|L|crore|Cr|cr|k|K)?$"
 )
 _RANGE_SEP_RE = re.compile(r"\s*(?:-|to)\s*")
 
 _CRORE = 10_000_000
 _LAKH = 100_000
 _THOUSAND = 1_000
+_MILLION = 1_000_000
 
 
 def _parse_value(value_str: str, unit_str: str | None) -> float | None:
@@ -36,18 +39,22 @@ def _parse_value(value_str: str, unit_str: str | None) -> float | None:
         return value * _CRORE
     if unit in ("l", "lakh"):
         return value * _LAKH
-    if unit == "k":
+    if unit in ("k",):
         return value * _THOUSAND
+    if unit in ("m", "mn", "million"):
+        return value * _MILLION
     return value
 
 
 def parse_budget(raw: object) -> float | None:
-    """Convert a budget value that may contain Indian currency shorthand to
-    a plain float in rupees.
+    """Convert a budget value to a plain float (USD).
 
-    Handles ``"80 lakh"``, ``"80L"``, ``"1.2 crore"``, ``"1.2 Cr"``,
-    ``"1.2cr"``, ``"50k"``, and plain numbers.  Strips ``$``, ``₹``,
-    commas, and whitespace first.
+    Handles ``"650k"``, ``"1.2M"``, ``"$1.2 million"``, ``"80 lakh"``,
+    ``"1.2 crore"``, ``"50k"``, ``"$150/month"``, ``"$3,200/mo"``, and
+    plain numbers.  Strips ``$``, ``₹``, commas, and whitespace first.
+
+    Strips periodic suffixes (``/mo``, ``/month``, ``/yr``, etc.) but does
+    *not* annualize — the parsed number is preserved as-is.
 
     Handles ranges (e.g. ``"80-100 lakh"``, ``"50k-80k"``, ``"10-20"``)
     by averaging the two endpoints.  Returns *None* for unparseable input.
@@ -58,12 +65,14 @@ def parse_budget(raw: object) -> float | None:
         return float(raw)
 
     cleaned = str(raw).replace("$", "").replace("₹", "").replace(",", "").strip()
+    # Strip periodic suffixes before parsing number+unit
+    cleaned = _PERIODIC_RE.sub("", cleaned).strip()
     if not cleaned:
         return None
 
     # --- Range with unit after the right value  (e.g. "80-100 lakh") ---
     m = re.match(
-        r"^(?P<left>[\d.]+)\s*(?:-|to)\s*(?P<right>[\d.]+)\s*(?P<unit>lakh|L|crore|Cr|cr|k|K)?$",
+        r"^(?P<left>[\d.]+)\s*(?:-|to)\s*(?P<right>[\d.]+)\s*(?P<unit>m|mn|million|M|lakh|L|crore|Cr|cr|k|K)?$",
         cleaned,
     )
     if m:
@@ -93,7 +102,7 @@ def parse_budget(raw: object) -> float | None:
 
 
 def _parse_single(raw: str) -> float | None:
-    m = _INDIAN_NUMBER_RE.match(raw)
+    m = _NUMBER_RE.match(raw)
     if not m:
         return None
     return _parse_value(m.group("value"), m.group("unit"))

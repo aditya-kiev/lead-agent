@@ -85,9 +85,10 @@ Rules:
 - Ask about exactly ONE missing field.
 - Be conversational, not robotic.
 - Explain why you need this information.
-- For the Budget field, convert Indian currency shorthand to a plain number in rupees.
-  e.g. "80 lakh" → 8000000, "1.2 crore" → 12000000, "50k" → 50000.
-  If the lead gives a range, use the midpoint.
+- For the Budget field, convert to a plain USD number.
+  e.g. "650k" → 650000, "1.2M" / "$1.2 million" → 1200000, "$150/month" → 150.
+  If the lead gives a range, use the midpoint. Preserve monthly figures as monthly
+  (don't annualize) unless the lead explicitly states an annual amount.
 
 Lead message: {input}""",
 
@@ -313,8 +314,8 @@ Rules:
 - Be conversational, not robotic.
 - Explain why you need this information.
 - For individual leads, ask about property type (e.g. "are you buying or selling, and what type of property?") instead of "what industry do you work in".
-- For the Budget field, convert Indian currency shorthand to a plain number in rupees.
-  e.g. "80 lakh" → 8000000, "1.2 crore" → 12000000, "50k" → 50000.
+- For the Budget field, convert to a plain USD number.
+  e.g. "650k" → 650000, "1.2M" / "$1.2 million" → 1200000, "$3,200/mo" → 3200.
   If the lead gives a range, use the midpoint.
 
 Lead message: {input}""",
@@ -534,8 +535,9 @@ Rules:
 - Explain why you need this information.
 - For individual leads, ask about coverage type (e.g. "what type of coverage are you looking for — auto, home, life, or health?") instead of "what industry do you work in".
 - For the Budget field, interpret as a monthly or annual premium amount, not a lump sum.
-  Convert Indian currency shorthand: "15k" → 15000, "2 lakh" → 200000, etc.
-  If the lead gives a range, use the midpoint.
+  Convert to a plain USD number: "150" → 150, "$150/month" → 150, "$1,200/yr" → 1200.
+  If the lead gives a range, use the midpoint. Preserve monthly figures as monthly
+  unless the lead explicitly states an annual amount.
 
 Lead message: {input}""",
 

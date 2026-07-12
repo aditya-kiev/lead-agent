@@ -205,6 +205,15 @@ async def test_parse_budget_handles_indian_shorthand():
         ("not provided", None),
         ("unknown", None),
         ("abc", None),
+        # US-denominated budgets
+        ("1.2M", 1_200_000),
+        ("$1.2 million", 1_200_000),
+        ("1.2m", 1_200_000),
+        ("1.2mn", 1_200_000),
+        ("650k", 650_000),
+        ("$150/month", 150.0),
+        ("$3,200/mo", 3_200.0),
+        ("1.8M", 1_800_000),
     ]
     for raw, expected in cases:
         result = parse_budget(raw)

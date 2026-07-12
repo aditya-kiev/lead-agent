@@ -35,6 +35,8 @@ uvicorn app.main:app --reload
 | `QUALIFICATION_THRESHOLD_HOT` | `0.7` | Score threshold for hot lead |
 | `QUALIFICATION_THRESHOLD_WARM` | `0.4` | Score threshold for warm lead |
 | `HUMAN_HANDOFF_CONFIDENCE` | `0.3` | Confidence below this → human handoff |
+| `VERTICAL` | `generic` | Business persona: `generic`, `real_estate`, or `insurance` |
+| `BUSINESS_NAME` | `Your Business Name` | Name used in all lead-facing prompts |
 | `DEBUG` | `false` | Enable debug router |
 
 ## Graph Structure (LangGraph)
