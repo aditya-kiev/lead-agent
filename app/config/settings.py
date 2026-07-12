@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     human_handoff_confidence: float = 0.3
 
     api_key: str = ""
-    allowed_origins: list[str] = []
+    allowed_origins: list[str] = ["*"]
 
     vertical: str = "generic"
     business_name: str = "our company"

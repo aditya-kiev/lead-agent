@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shieldwise — Insurance Lead Assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #F0F3F7;
+    --panel: #FFFFFF;
+    --ink: #1A2638;
+    --ink-soft: #42526B;
+    --muted: #7A8A9E;
+    --hairline: #D6DEE8;
+    --accent: #2B5797;
+    --accent-hover: #1F4275;
+    --accent-soft: #E3EBF5;
+    --calm: #3D8B7A;
+    --calm-soft: #E0F0EC;
+    --brass: #B8903E;
+    --brass-soft: #F3EAD6;
+    --radius: 10px;
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-body: 'Inter', system-ui, sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    font-family: var(--font-body);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Top bar ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--hairline);
+    background: rgba(240, 243, 247, 0.85);
+    backdrop-filter: blur(8px);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+
+  .brand {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .brand .accent { color: var(--accent); }
+
+  .session-tag {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+
+  /* ── Explainer strip ── */
+  .explainer {
+    background: var(--accent-soft);
+    padding: 12px 32px;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    border-bottom: 1px solid var(--hairline);
+    text-align: center;
+  }
+  .explainer strong { color: var(--ink); font-weight: 600; }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 24px;
+    max-width: 1180px;
+    margin: 24px auto 40px;
+    padding: 0 32px;
+    align-items: start;
+    flex: 1;
+  }
+
+  @media (max-width: 880px) {
+    .topbar { padding: 14px 18px; }
+    .explainer { padding: 10px 18px; font-size: 12.5px; }
+    .layout { grid-template-columns: 1fr; padding: 0 14px; gap: 16px; margin-top: 14px; }
+  }
+
+  /* ── Chat panel ── */
+  .chat-panel {
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    height: 620px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(26,38,56,0.04);
+  }
+
+  @media (max-width: 880px) {
+    .chat-panel { height: 520px; }
+  }
+
+  .chat-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .chat-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 400;
+    flex-shrink: 0;
+  }
+
+  .chat-title { font-weight: 600; font-size: 14.5px; }
+  .chat-subtitle { font-size: 12px; color: var(--muted); line-height: 1.3; }
+  .status-led {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11.5px; font-weight: 500; color: var(--calm);
+  }
+  .status-led .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--calm); box-shadow: 0 0 0 3px var(--calm-soft);
+  }
+
+  /* ── Thread ── */
+  .thread {
+    flex: 1; overflow-y: auto; padding: 20px 18px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .bubble-row { display: flex; animation: msgIn 0.25s ease-out both; }
+  .bubble-row.lead { justify-content: flex-start; }
+  .bubble-row.agent { justify-content: flex-end; }
+
+  .bubble {
+    max-width: 76%;
+    padding: 11px 16px;
+    font-size: 14.5px;
+    line-height: 1.5;
+    border-radius: 18px;
+  }
+
+  .bubble-row.lead .bubble {
+    background: #E8EDF4;
+    color: var(--ink);
+    border-bottom-left-radius: 4px;
+  }
+
+  .bubble-row.agent .bubble {
+    background: var(--ink);
+    color: #EEF1F6;
+    border-bottom-right-radius: 4px;
+  }
+
+  /* ── Typing indicator ── */
+  @keyframes dotBounce { 0%,60%,100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-5px); opacity: 1; } }
+  .typing {
+    display: flex; gap: 5px;
+    padding: 14px 18px;
+    background: var(--ink);
+    border-radius: 18px;
+    border-bottom-right-radius: 4px;
+    width: fit-content;
+  }
+  .typing span {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #9AABBF;
+    animation: dotBounce 1.2s infinite ease-in-out;
+  }
+  .typing span:nth-child(2) { animation-delay: 0.15s; }
+  .typing span:nth-child(3) { animation-delay: 0.3s; }
+
+  /* ── Composer ── */
+  .composer {
+    display: flex; gap: 10px;
+    padding: 12px 16px 14px;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .composer input {
+    flex: 1;
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 11px 14px;
+    font-size: 14px;
+    font-family: var(--font-body);
+    background: #F8FAFC;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .composer input:focus { border-color: var(--accent); }
+
+  .composer button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 0 20px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 13.5px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .composer button:hover { background: var(--accent-hover); }
+  .composer button:disabled { background: #C4CFDC; cursor: default; }
+
+  .quickstarts {
+    padding: 0 14px 10px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .quickstarts button {
+    background: transparent;
+    border: 1px solid var(--hairline);
+    color: var(--ink-soft);
+    font-size: 11.5px;
+    font-family: var(--font-body);
+    padding: 5px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    line-height: 1.3;
+  }
+  .quickstarts button:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+  /* ── Lead record panel ── */
+  .record-panel {
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    overflow: hidden;
+    position: sticky;
+    top: 88px;
+    box-shadow: 0 1px 4px rgba(26,38,56,0.04);
+  }
+
+  @media (max-width: 880px) {
+    .record-panel { position: static; }
+  }
+
+  .record-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .record-header .eyebrow {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  .record-header .heading {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .record-header .subheading {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  .record-body { padding: 4px 0; }
+
+  .field-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 11px 20px;
+    border-bottom: 1px solid #EBF0F5;
+    transition: background 0.5s ease;
+  }
+  .field-row:last-of-type { border-bottom: none; }
+
+  @keyframes fieldFlash {
+    0% { background: var(--brass-soft); }
+    100% { background: transparent; }
+  }
+  .field-row.flash {
+    animation: fieldFlash 0.9s ease-out both;
+  }
+
+  .field-label { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+  .field-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    text-align: right;
+    max-width: 62%;
+    word-break: break-word;
+  }
+  .field-value.empty { color: #BAC3D0; font-weight: 400; font-style: italic; }
+
+  .status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .status-badge.cold { background: #E8EDF4; color: var(--muted); }
+  .status-badge.warm { background: var(--brass-soft); color: #8A6A29; }
+  .status-badge.hot { background: var(--calm-soft); color: #2C6B5C; }
+
+  .record-footer {
+    padding: 14px 20px;
+    background: #F6F8FB;
+    border-top: 1px solid var(--hairline);
+  }
+  .record-footer .footnote { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  .booking-flag {
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: var(--calm-soft);
+    border: 1px solid #BADBD0;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--calm);
+    font-weight: 600;
+    display: none;
+    align-items: center;
+    gap: 7px;
+  }
+  .booking-flag.show { display: flex; }
+
+  .booking-flag .check { font-size: 16px; }
+
+  /* ── Error state ── */
+  .error-banner {
+    display: none;
+    padding: 10px 16px;
+    background: #F6E8E5;
+    color: #7A3E32;
+    font-size: 13px;
+    font-weight: 500;
+    border-bottom: 1px solid #EBD5CE;
+    text-align: center;
+  }
+  .error-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Shieldwise<span class="accent">.</span></div>
+  <div class="session-tag" id="sessionTag">session · —</div>
+</div>
+
+<div class="explainer">
+  <strong>Live conversation in progress.</strong> Every field on the right fills in automatically as the lead talks — no forms, no manual entry, no missed leads.
+</div>
+
+<div class="error-banner" id="errorBanner">⚠ Couldn't reach the assistant right now — check your connection.</div>
+
+<div class="layout">
+
+  <div class="chat-panel">
+    <div class="chat-header">
+      <div class="chat-avatar">S</div>
+      <div>
+        <div class="chat-title">Shieldwise Assistant</div>
+        <div class="chat-subtitle">Responds instantly · Pre-qualifies every lead</div>
+      </div>
+      <div class="status-led"><span class="dot"></span>Live</div>
+    </div>
+
+    <div class="thread" id="thread"></div>
+
+    <div class="quickstarts" id="quickstarts">
+      <button data-msg="Hi, I just bought a new car and need comprehensive coverage including collision and liability. My budget is around $150/month.">New car — $150/mo</button>
+      <button data-msg="I'm comparing quotes for term life insurance — what plans do you offer and what do they typically cost?">Term life quotes</button>
+      <button data-msg="I need auto and renters insurance — do you offer bundling discounts?">Auto + renters bundle</button>
+      <button data-msg="This is a bit more than I wanted to spend">Premium concern</button>
+    </div>
+
+    <div class="composer">
+      <input type="text" id="msgInput" placeholder="Type your message as the lead…" autocomplete="off">
+      <button id="sendBtn">Send</button>
+    </div>
+  </div>
+
+  <div class="record-panel">
+    <div class="record-header">
+      <div class="eyebrow">Extracted in real time</div>
+      <div class="heading">Lead Record</div>
+      <div class="subheading">Every field below was captured from the conversation on the left — no forms, no manual entry.</div>
+    </div>
+    <div class="record-body" id="recordBody"></div>
+    <div class="record-footer">
+      <div class="booking-flag" id="bookingFlag"><span class="check">✓</span> Meeting confirmed</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API_BASE = "http://127.0.0.1:8000";
+  const API_KEY = "";
+
+  let sending = false;
+
+  const sessionId = "demo-" + crypto.randomUUID().slice(0, 8);
+  document.getElementById("sessionTag").textContent = "session · " + sessionId;
+
+  const thread = document.getElementById("thread");
+  const input = document.getElementById("msgInput");
+  const sendBtn = document.getElementById("sendBtn");
+  const quickstarts = document.getElementById("quickstarts");
+  const errorBanner = document.getElementById("errorBanner");
+
+  const FIELDS = [
+    { key: "lead_name", label: "Name" },
+    { key: "industry", label: "Coverage type" },
+    { key: "budget", label: "Budget", format: v => v ? "$" + Number(v).toLocaleString("en-US") + "/mo" : null },
+    { key: "timeline", label: "Timeline" },
+    { key: "problem_statement", label: "Notes" },
+    { key: "qualification_score", label: "Score", format: v => v != null ? (v * 100).toFixed(0) + "%" : null },
+  ];
+
+  // ── UI-side meeting sanity check ──
+  let lastBotProposedTime = false;
+  let userConfirmedAfterProposal = false;
+
+  const TIME_PATTERNS = /\b(\d{1,2}:\d{2}\s*(am|pm)|(at\s+\d{1,2}\s*(am|pm))|(next\s+(monday|tuesday|wednesday|thursday|friday))|tomorrow)\b/i;
+  const CONFIRM_WORDS = /\b(yes|sure|that works|works for me|confirm|book|schedule it|let's do it|sounds good)\b/i;
+
+  function checkBotProposedTime(text) {
+    return TIME_PATTERNS.test(text);
+  }
+
+  function checkUserConfirmed(text) {
+    return CONFIRM_WORDS.test(text);
+  }
+
+  let lastRecord = {};
+
+  function renderRecord(record) {
+    const body = document.getElementById("recordBody");
+    body.innerHTML = "";
+
+    const statusRow = document.createElement("div");
+    statusRow.className = "field-row";
+    const status = (record.lead_status || "cold").toLowerCase();
+    statusRow.innerHTML = `
+      <span class="field-label">Status</span>
+      <span class="status-badge ${status}">${status}</span>
+    `;
+    body.appendChild(statusRow);
+
+    FIELDS.forEach(f => {
+      const raw = record[f.key];
+      const changed = lastRecord[f.key] !== raw && raw != null;
+      const display = raw != null ? (f.format ? f.format(raw) : raw) : "not yet captured";
+      const row = document.createElement("div");
+      row.className = "field-row" + (changed ? " flash" : "");
+      row.innerHTML = `
+        <span class="field-label">${f.label}</span>
+        <span class="field-value ${raw == null ? "empty" : ""}">${display}</span>
+      `;
+      body.appendChild(row);
+    });
+
+    // Meeting confirmed — UI-side sanity check
+    const flag = document.getElementById("bookingFlag");
+    if (record.booking_confirmed && lastBotProposedTime && userConfirmedAfterProposal) {
+      flag.classList.add("show");
+    } else {
+      flag.classList.remove("show");
+    }
+
+    lastRecord = record;
+  }
+
+  renderRecord({});
+
+  function addBubble(role, text) {
+    const row = document.createElement("div");
+    row.className = "bubble-row " + (role === "lead" ? "lead" : "agent");
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;
+    row.appendChild(bubble);
+    thread.appendChild(row);
+    thread.scrollTop = thread.scrollHeight;
+
+    if (role === "agent" && checkBotProposedTime(text)) {
+      lastBotProposedTime = true;
+    }
+    if (role === "lead" && lastBotProposedTime && checkUserConfirmed(text)) {
+      userConfirmedAfterProposal = true;
+    }
+
+    return row;
+  }
+
+  function showTyping() {
+    const row = document.createElement("div");
+    row.className = "bubble-row agent";
+    row.id = "typingRow";
+    row.innerHTML = `<div class="typing"><span></span><span></span><span></span></div>`;
+    thread.appendChild(row);
+    thread.scrollTop = thread.scrollHeight;
+  }
+
+  function hideTyping() {
+    const el = document.getElementById("typingRow");
+    if (el) el.remove();
+  }
+
+  async function refreshRecord() {
+    try {
+      const headers = {};
+      if (API_KEY) headers["x-api-key"] = API_KEY;
+      const res = await fetch(`${API_BASE}/conversation/${sessionId}`, { headers });
+      if (!res.ok) return;
+      const data = await res.json();
+      renderRecord(data);
+    } catch (_) {}
+  }
+
+  async function sendMessage(text) {
+    if (!text.trim() || sending) return;
+    sending = true;
+    errorBanner.classList.remove("show");
+    input.value = "";
+    sendBtn.disabled = true;
+    if (quickstarts.style.display !== "none") quickstarts.style.display = "none";
+
+    addBubble("lead", text);
+    showTyping();
+
+    try {
+      const headers = { "Content-Type": "application/json" };
+      if (API_KEY) headers["x-api-key"] = API_KEY;
+
+      const res = await fetch(`${API_BASE}/webhook/message`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ session_id: sessionId, message: text, channel: "web" }),
+      });
+
+      hideTyping();
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          addBubble("agent", "The assistant is experiencing high demand right now. Please wait a moment and try again.");
+        } else {
+          addBubble("agent", "I'm sorry, I had trouble processing that. Could you rephrase?");
+        }
+        return;
+      }
+
+      const data = await res.json();
+      addBubble("agent", data.reply);
+      await refreshRecord();
+    } catch (e) {
+      hideTyping();
+      errorBanner.classList.add("show");
+      console.error(e);
+    } finally {
+      sending = false;
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+
+  sendBtn.addEventListener("click", () => sendMessage(input.value));
+  input.addEventListener("keydown", e => { if (e.key === "Enter") sendMessage(input.value); });
+  quickstarts.addEventListener("click", e => {
+    const btn = e.target.closest("button[data-msg]");
+    if (btn) sendMessage(btn.dataset.msg);
+  });
+
+  window.addEventListener("DOMContentLoaded", () => {
+    sendMessage("Hi, I just bought a new car and need comprehensive coverage including collision and liability. My budget is around $150/month.");
+  });
+</script>
+</body>
+</html>
