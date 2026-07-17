@@ -365,6 +365,42 @@
 
   .booking-flag .check { font-size: 16px; }
 
+  /* ── Record panel error state ── */
+  .record-error {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px;
+    background: #F6E8E5;
+    border-top: 1px solid #EBD5CE;
+    font-size: 12px;
+    color: #7A3E32;
+  }
+  .record-error.show { display: flex; }
+  .record-error-retry {
+    background: transparent;
+    border: 1px solid #D4A898;
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #7A3E32;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    font-family: var(--font-body);
+  }
+  .record-error-retry:hover { background: #D4A898; color: #fff; }
+
+  /* ── Thinking state ── */
+  .typing.thinking {
+    background: var(--ink-soft);
+    color: #C8D0DC;
+    font-size: 13px;
+    font-weight: 400;
+    padding: 12px 18px;
+    font-style: italic;
+  }
+
   /* ── Error state ── */
   .error-banner {
     display: none;
@@ -429,6 +465,10 @@
     <div class="record-footer">
       <div class="booking-flag" id="bookingFlag"><span class="check">✓</span> Meeting confirmed</div>
     </div>
+    <div class="record-error" id="recordError">
+      <span id="recordErrorMsg"></span>
+      <button class="record-error-retry" id="retryBtn">↻ Retry</button>
+    </div>
   </div>
 
 </div>
@@ -473,6 +513,8 @@
   }
 
   let lastRecord = {};
+  let lastFailedText = null;
+  let typingTimeout = null;
 
   function renderRecord(record) {
     const body = document.getElementById("recordBody");
@@ -540,11 +582,29 @@
     row.innerHTML = `<div class="typing"><span></span><span></span><span></span></div>`;
     thread.appendChild(row);
     thread.scrollTop = thread.scrollHeight;
+
+    if (typingTimeout) clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+      const el = document.getElementById("typingRow");
+      if (el) {
+        el.innerHTML = `<div class="typing thinking">still thinking…</div>`;
+      }
+    }, 8000);
   }
 
   function hideTyping() {
+    if (typingTimeout) { clearTimeout(typingTimeout); typingTimeout = null; }
     const el = document.getElementById("typingRow");
     if (el) el.remove();
+  }
+
+  function showRecordError(msg) {
+    document.getElementById("recordErrorMsg").textContent = msg;
+    document.getElementById("recordError").classList.add("show");
+  }
+
+  function hideRecordError() {
+    document.getElementById("recordError").classList.remove("show");
   }
 
   async function refreshRecord() {
@@ -561,7 +621,9 @@
   async function sendMessage(text) {
     if (!text.trim() || sending) return;
     sending = true;
+    lastFailedText = null;
     errorBanner.classList.remove("show");
+    hideRecordError();
     input.value = "";
     sendBtn.disabled = true;
     if (quickstarts.style.display !== "none") quickstarts.style.display = "none";
@@ -582,20 +644,25 @@
       hideTyping();
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
+        lastFailedText = text;
         if (res.status === 429) {
-          addBubble("agent", "The assistant is experiencing high demand right now. Please wait a moment and try again.");
+          showRecordError("Assistant is rate-limited — tap Retry.");
+          addBubble("agent", "High demand right now. Please wait a moment and try again.");
         } else {
-          addBubble("agent", "I'm sorry, I had trouble processing that. Could you rephrase?");
+          showRecordError("Assistant hiccup — tap Retry.");
+          addBubble("agent", "I had trouble processing that. Tap Retry below to try again.");
         }
         return;
       }
 
+      hideRecordError();
       const data = await res.json();
       addBubble("agent", data.reply);
       await refreshRecord();
     } catch (e) {
       hideTyping();
+      lastFailedText = text;
+      showRecordError("Can't reach the assistant — tap Retry.");
       errorBanner.classList.add("show");
       console.error(e);
     } finally {
@@ -605,8 +672,13 @@
     }
   }
 
+  function retryLastMessage() {
+    if (lastFailedText) sendMessage(lastFailedText);
+  }
+
   sendBtn.addEventListener("click", () => sendMessage(input.value));
   input.addEventListener("keydown", e => { if (e.key === "Enter") sendMessage(input.value); });
+  document.getElementById("retryBtn").addEventListener("click", retryLastMessage);
   quickstarts.addEventListener("click", e => {
     const btn = e.target.closest("button[data-msg]");
     if (btn) sendMessage(btn.dataset.msg);

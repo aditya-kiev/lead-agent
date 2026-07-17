@@ -60,7 +60,10 @@ async def start_conversation(
         ) from e
     except Exception as e:
         logger.exception("start_conversation failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "ai_unavailable", "message": "The AI service is temporarily unavailable."},
+        ) from e
 
 
 @router.post("/message", response_model=MessageOut)
@@ -106,4 +109,7 @@ async def handle_message(
         ) from e
     except Exception as e:
         logger.exception("handle_message failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "ai_unavailable", "message": "The AI service is temporarily unavailable."},
+        ) from e
