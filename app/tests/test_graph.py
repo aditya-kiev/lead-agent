@@ -441,6 +441,101 @@ async def test_meeting_booking_does_not_self_confirm_from_earlier_ai_message():
     )
 
 
+@pytest.mark.asyncio
+async def test_meeting_booking_first_entry_no_fallback_on_stray_keyword():
+    """When current_node is NOT 'meeting_booking' on entry, a stray
+    affirmative keyword with no exact slot match must NOT confirm a booking.
+    The fallback-to-slots[0] is only safe on re-entry where slots were
+    explicitly shown on a prior turn."""
+    from unittest.mock import AsyncMock, MagicMock
+    from langchain_core.messages import HumanMessage
+    from app.agent.nodes.meeting_booking import create_meeting_booking_node
+
+    state = {
+        "lead_name": "Tom",
+        "company_name": None,
+        "lead_status": "hot",
+        "messages": [
+            HumanMessage(content="Sure, what kind of meetings do you offer?"),
+        ],
+        "conversation_history": [],
+        "booking_confirmed": False,
+        "meeting_time": None,
+        "session_id": "test-first-entry",
+        "current_node": "qualification",  # NOT meeting_booking → first entry
+    }
+
+    mock_model = MagicMock()
+    mock_model.ainvoke = AsyncMock(return_value=MagicMock(
+        content="I'd be happy to walk you through the scheduling process. "
+                "We offer 30-minute introductory calls. What time works best?",
+    ))
+
+    node = create_meeting_booking_node(mock_model)
+    result = await node(state)
+
+    assert result.get("booking_confirmed") is False, (
+        f"First entry: stray 'sure' without slot match must NOT confirm, "
+        f"got booking_confirmed={result.get('booking_confirmed')!r}"
+    )
+    assert result.get("meeting_time") is None, (
+        f"First entry: meeting_time must be None, "
+        f"got {result.get('meeting_time')!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_meeting_booking_reentry_confirms_with_generic_keyword():
+    """When current_node WAS already 'meeting_booking' (slots proposed on a
+    prior turn), a generic affirmative reply without an exact slot label
+    should fall back to slots[0] and confirm the booking."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from langchain_core.messages import HumanMessage
+    from app.agent.nodes.meeting_booking import create_meeting_booking_node
+
+    state = {
+        "lead_name": "Jane",
+        "company_name": None,
+        "lead_status": "hot",
+        "messages": [
+            HumanMessage(content="Sure, that works."),
+        ],
+        "conversation_history": [
+            {"role": "assistant", "content": "I have Tuesday 10am, Wednesday 2pm, or Friday 11am."},
+        ],
+        "booking_confirmed": False,
+        "meeting_time": None,
+        "session_id": "test-reentry",
+        "current_node": "meeting_booking",  # re-entry: slots were shown prior turn
+    }
+
+    mock_model = MagicMock()
+    mock_model.ainvoke = AsyncMock(return_value=MagicMock(
+        content="Perfect! I've booked you for Tuesday at 10am. You'll receive "
+                "a calendar invite shortly.",
+    ))
+
+    with patch("app.agent.nodes.meeting_booking.get_available_slots",
+               new_callable=AsyncMock) as mock_slots:
+        mock_slots.return_value = [
+            {"label": "Tuesday, Jul 21 at 10:00 AM", "datetime": "2026-07-21T10:00:00"},
+            {"label": "Wednesday, Jul 22 at 2:00 PM", "datetime": "2026-07-22T14:00:00"},
+            {"label": "Friday, Jul 24 at 11:00 AM", "datetime": "2026-07-24T11:00:00"},
+        ]
+
+        node = create_meeting_booking_node(mock_model)
+        result = await node(state)
+
+    assert result.get("booking_confirmed") is True, (
+        f"Re-entry with generic 'sure, that works' must confirm, "
+        f"got booking_confirmed={result.get('booking_confirmed')!r}"
+    )
+    assert result.get("meeting_time") == "2026-07-21T10:00:00", (
+        f"meeting_time should default to first slot, "
+        f"got {result.get('meeting_time')!r}"
+    )
+
+
 def test_gemini_timeout_is_configured():
     """ChatGoogleGenerativeAI must be constructed with a timeout so hanging
     Gemini calls raise an exception instead of blocking forever."""
