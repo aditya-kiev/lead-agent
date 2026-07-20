@@ -536,6 +536,55 @@ async def test_meeting_booking_reentry_confirms_with_generic_keyword():
     )
 
 
+@pytest.mark.asyncio
+async def test_meeting_booking_reentry_question_blocks_confirmation():
+    """When current_node is 'meeting_booking' but the user's message contains
+    a '?' character, the keyword fallback must NOT confirm — a question is
+    not a pure confirmation."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from langchain_core.messages import HumanMessage
+    from app.agent.nodes.meeting_booking import create_meeting_booking_node
+
+    state = {
+        "lead_name": "Carlos",
+        "company_name": None,
+        "lead_status": "hot",
+        "messages": [
+            HumanMessage(content="Sure, but can you also tell me if you handle new construction homes?"),
+        ],
+        "conversation_history": [
+            {"role": "assistant", "content": "I have Tuesday 10am, Wednesday 2pm, or Friday 11am."},
+        ],
+        "booking_confirmed": False,
+        "meeting_time": None,
+        "session_id": "test-question-entry",
+        "current_node": "meeting_booking",
+    }
+
+    mock_model = MagicMock()
+    mock_model.ainvoke = AsyncMock(return_value=MagicMock(
+        content="Great question! Yes, we do handle new construction homes. "
+                "Would you like to book a call to discuss further?",
+    ))
+
+    with patch("app.agent.nodes.meeting_booking.get_available_slots",
+               new_callable=AsyncMock) as mock_slots:
+        mock_slots.return_value = [
+            {"label": "Tuesday, Jul 21 at 10:00 AM", "datetime": "2026-07-21T10:00:00"},
+        ]
+
+        node = create_meeting_booking_node(mock_model)
+        result = await node(state)
+
+    assert result.get("booking_confirmed") is False, (
+        f"Re-entry with question must NOT confirm, "
+        f"got booking_confirmed={result.get('booking_confirmed')!r}"
+    )
+    assert result.get("meeting_time") is None, (
+        f"meeting_time must be None, got {result.get('meeting_time')!r}"
+    )
+
+
 def test_gemini_timeout_is_configured():
     """ChatGoogleGenerativeAI must be constructed with a timeout so hanging
     Gemini calls raise an exception instead of blocking forever."""

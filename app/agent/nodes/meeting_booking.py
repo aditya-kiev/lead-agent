@@ -45,7 +45,7 @@ def create_meeting_booking_node(model: ChatGoogleGenerativeAI):
                     confirmed = True
                     meeting_time = slot["datetime"]
                     break
-            if not confirmed and state.get("current_node") == "meeting_booking":
+            if not confirmed and state.get("current_node") == "meeting_booking" and "?" not in user_text:
                 confirmed = True
                 meeting_time = slots[0]["datetime"] if slots else None
 
