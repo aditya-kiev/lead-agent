@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.webhook import router as webhook_router
 from app.api.conversation import router as conversation_router
 from app.api.debug import router as debug_router
+from app.api.demo import router as demo_router
 from app.config.settings import settings
 from app.database.session import init_db
 from app.models.schemas import HealthOut
@@ -48,6 +49,7 @@ app.add_middleware(
 
 app.include_router(webhook_router)
 app.include_router(conversation_router)
+app.include_router(demo_router)
 if settings.debug:
     app.include_router(debug_router)
 

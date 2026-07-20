@@ -475,12 +475,10 @@
 
 <script>
   const API_BASE = "https://lead-agent-api-zyz5.onrender.com";
-  const API_KEY = "90864ca00cd0a7065ca4d9745523b48e";
 
   let sending = false;
-
-  const sessionId = "demo-" + crypto.randomUUID().slice(0, 8);
-  document.getElementById("sessionTag").textContent = "session · " + sessionId;
+  let sessionId = null;
+  let demoToken = null;
 
   const thread = document.getElementById("thread");
   const input = document.getElementById("msgInput");
@@ -496,6 +494,15 @@
     { key: "problem_statement", label: "Notes" },
     { key: "qualification_score", label: "Score", format: v => v != null ? (v * 100).toFixed(0) + "%" : null },
   ];
+
+  async function initDemoSession() {
+    const res = await fetch(`${API_BASE}/demo/token`, { method: "POST" });
+    if (!res.ok) throw new Error("Could not start demo session");
+    const data = await res.json();
+    sessionId = data.session_id;
+    demoToken = data.token;
+    document.getElementById("sessionTag").textContent = "session · " + sessionId;
+  }
 
   // ── UI-side meeting sanity check ──
   // Only show "Meeting confirmed" when:
@@ -616,7 +623,7 @@
   async function refreshRecord() {
     try {
       const headers = {};
-      if (API_KEY) headers["x-api-key"] = API_KEY;
+      if (demoToken) headers["x-demo-token"] = demoToken;
       const res = await fetch(`${API_BASE}/conversation/${sessionId}`, { headers });
       if (!res.ok) return;
       const data = await res.json();
@@ -639,7 +646,7 @@
 
     try {
       const headers = { "Content-Type": "application/json" };
-      if (API_KEY) headers["x-api-key"] = API_KEY;
+      if (demoToken) headers["x-demo-token"] = demoToken;
 
       const res = await fetch(`${API_BASE}/webhook/message`, {
         method: "POST",
@@ -690,8 +697,14 @@
     if (btn) sendMessage(btn.dataset.msg);
   });
 
-  window.addEventListener("DOMContentLoaded", () => {
-    sendMessage("Hi, I'm looking to buy a 4-bedroom single-family home in Austin, TX. My budget is around $650,000 and I'd like to close within 3 months.");
+  window.addEventListener("DOMContentLoaded", async () => {
+    try {
+      await initDemoSession();
+      sendMessage("Hi, I'm looking to buy a 4-bedroom single-family home in Austin, TX. My budget is around $650,000 and I'd like to close within 3 months.");
+    } catch (e) {
+      errorBanner.classList.add("show");
+      console.error(e);
+    }
   });
 </script>
 </body>

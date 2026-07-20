@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     human_handoff_confidence: float = 0.3
 
     api_key: str = ""
+    demo_token_secret: str = ""
+    demo_token_ttl_seconds: int = 7200
+    demo_token_rpm_limit: int = 8
     allowed_origins: list[str] = ["*"]
 
     vertical: str = "generic"

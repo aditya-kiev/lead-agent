@@ -79,3 +79,115 @@ async def test_debug_state_not_mounted_in_production(client):
     with patch("app.config.settings.settings.debug", False):
         response = await client.get("/debug/state/test-session")
         assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_demo_token_endpoint_returns_token(client):
+    """POST /demo/token must return 200 with session_id, token, expires_at."""
+    with patch("app.config.settings.settings.demo_token_secret", "test-secret-32-chars-long!!"):
+        response = await client.post("/demo/token")
+        assert response.status_code == 200
+        data = response.json()
+        assert "session_id" in data
+        assert data["session_id"].startswith("demo-")
+        assert "token" in data
+        assert "expires_at" in data
+        assert isinstance(data["expires_at"], int)
+
+
+@pytest.mark.asyncio
+async def test_demo_token_authenticates_webhook(client):
+    """A valid demo token must authenticate POST /webhook/message."""
+    with patch("app.config.settings.settings.api_key", "master-key"):
+        with patch("app.config.settings.settings.demo_token_secret", "test-secret-32-chars-long!!"):
+            # Get a demo token
+            resp = await client.post("/demo/token")
+            assert resp.status_code == 200
+            tok_data = resp.json()
+
+            with patch("app.api.webhook.run_agent", new_callable=AsyncMock) as mock_agent:
+                mock_agent.return_value = {
+                    "conversation_history": [],
+                    "lead_status": None,
+                    "booking_confirmed": False,
+                    "meeting_time": None,
+                    "human_escalated": False,
+                    "next_action": None,
+                }
+                payload = {"session_id": tok_data["session_id"], "message": "Hello"}
+                response = await client.post(
+                    "/webhook/message",
+                    json=payload,
+                    headers={"X-Demo-Token": tok_data["token"]},
+                )
+                assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_demo_token_rejected_for_wrong_session(client):
+    """A demo token issued for session A must be rejected for session B."""
+    with patch("app.config.settings.settings.api_key", "master-key"):
+        with patch("app.config.settings.settings.demo_token_secret", "test-secret-32-chars-long!!"):
+            resp = await client.post("/demo/token")
+            assert resp.status_code == 200
+            tok_data = resp.json()
+
+            payload = {"session_id": "some-other-session", "message": "Hello"}
+            response = await client.post(
+                "/webhook/message",
+                json=payload,
+                headers={"X-Demo-Token": tok_data["token"]},
+            )
+            assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_demo_token_rejected_when_expired(client):
+    """An expired demo token must be rejected (401)."""
+    with patch("app.config.settings.settings.api_key", "master-key"):
+        with patch("app.config.settings.settings.demo_token_secret", "test-secret-32-chars-long!!"):
+            resp = await client.post("/demo/token")
+            assert resp.status_code == 200
+            tok_data = resp.json()
+
+            # Fast-forward past expiry
+            with patch("time.time", return_value=tok_data["expires_at"] + 1):
+                payload = {"session_id": tok_data["session_id"], "message": "Hello"}
+                response = await client.post(
+                    "/webhook/message",
+                    json=payload,
+                    headers={"X-Demo-Token": tok_data["token"]},
+                )
+                assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_demo_token_rate_limited_per_ip(client):
+    """POST /demo/token should return 429 after exceeding the per-IP rate limit."""
+    from app.api.demo import _rate_limited
+    with patch("app.config.settings.settings.demo_token_secret", "test-secret-32-chars-long!!"):
+        with patch("app.api.demo._rate_limited", new_callable=AsyncMock, return_value=True):
+            response = await client.post("/demo/token")
+            assert response.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_master_api_key_still_works_with_demo_token_feature(client):
+    """x-api-key (master key) must still work exactly as before — no regression."""
+    with patch("app.config.settings.settings.api_key", "master-key"):
+        with patch("app.api.webhook.run_agent", new_callable=AsyncMock) as mock_agent:
+            mock_agent.return_value = {
+                "conversation_history": [],
+                "lead_status": None,
+                "booking_confirmed": False,
+                "meeting_time": None,
+                "human_escalated": False,
+                "next_action": None,
+            }
+            payload = {"session_id": "test-session", "message": "Hello"}
+            response = await client.post(
+                "/webhook/message",
+                json=payload,
+                headers={"X-API-Key": "master-key"},
+            )
+            assert response.status_code == 200

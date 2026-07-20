@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 # Per-turn Gemini call counter (reset per run_agent invocation)
 gemini_call_counter: ContextVar[int] = ContextVar("gemini_call_counter", default=0)
 
+# Override RPM limit for demo-token-authenticated requests (set per-request)
+demo_rpm_limit: ContextVar[int] = ContextVar("demo_rpm_limit", default=0)
+
 # Sliding-window rate limiter — tracks timestamps of calls in the last 60 s
 # and refuses (by sleeping) once the count reaches the RPM ceiling.
 # This actually paces sequential calls, unlike a semaphore which only limits
@@ -32,7 +35,10 @@ def _get_rate_limiter() -> tuple[asyncio.Lock, deque[float]]:
 async def _acquire_rate_limit() -> None:
     """Wait until a slot opens in the 60-second sliding window."""
     lock, timestamps = _get_rate_limiter()
-    rpm_limit = int(settings.gemini_rpm_limit)
+
+    # Use demo-specific RPM limit if set, otherwise the global limit
+    override = demo_rpm_limit.get()
+    rpm_limit = int(override if override > 0 else settings.gemini_rpm_limit)
     if rpm_limit <= 0:
         return  # disabled
 
