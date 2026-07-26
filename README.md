@@ -96,9 +96,45 @@ Continue an existing conversation. Requires `X-API-Key` header when `API_KEY` is
 ### `GET /debug/state/{session_id}`
 Inspect raw agent state (only when `DEBUG=true`).
 
+## Email Alerts (Resend)
+
+When a lead's `qualification_score` crosses `QUALIFICATION_THRESHOLD_HOT`, the
+first time that happens for a given session an email alert is sent via [Resend](https://resend.com).
+The alert includes lead name, budget, timeline, score, and meeting time.
+
+- Configure `RESEND_API_KEY`, `NOTIFY_EMAIL`, `RESEND_FROM_EMAIL` in env (see `.env.example`)
+- Without domain verification you can only send **from** `onboarding@resend.dev` **to** your own email
+- Deduplication: `hot_alert_sent_at` column prevents duplicate alerts per session
+
+## Dashboard
+
+A minimal client-facing dashboard is available at `/dashboard`:
+
+- Lists all leads (name, budget, status, score, stage, meeting time)
+- Sorted by score descending (hottest first)
+- Each row expands to show the full conversation transcript
+- Requires HTTP Basic Auth (`DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD`)
+- CSV export at `/leads/export.csv`
+
+## Database Backups
+
+Automated daily via GitHub Actions. Configure `DATABASE_URL` as a repository secret.
+
+- Backup script: `scripts/backup_db.sh`
+- Workflow: `.github/workflows/backup-db.yml`
+- Artifacts retained for 90 days
+- See `docs/postgres-migration.md` for the Neon migration runbook
+
+## CRM Webhook
+
+When `CRM_WEBHOOK_URL` is set, lead data is POSTed as JSON on every create/update
+(via the `end_conversation` node). Retry: up to 3 attempts (1s/3s/9s backoff) on
+5xx/network errors, then give up. Configure `CRM_WEBHOOK_SECRET` for optional
+sender validation via the `X-Webhook-Secret` header.
+
 ## Tests
 
 ```bash
 pytest -v
-# 40 passed
+# ~80 passed
 ```

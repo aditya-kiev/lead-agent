@@ -15,26 +15,27 @@ class ConversationMemory:
                 if not existing:
                     await create_conversation(db_session, session_id)
 
-                await update_conversation(
-                    db_session,
-                    session_id,
-                    lead_name=state.get("lead_name"),
-                    company_name=state.get("company_name"),
-                    industry=state.get("industry"),
-                    budget=state.get("budget"),
-                    timeline=state.get("timeline"),
-                    problem_statement=state.get("problem_statement"),
-                    qualification_score=state.get("qualification_score"),
-                    lead_status=state.get("lead_status"),
-                    lead_intent=state.get("lead_intent"),
-                    lead_type=state.get("lead_type"),
-                    booking_confirmed=state.get("booking_confirmed", False),
-                    meeting_time=state.get("meeting_time"),
-                    conversation_history=state.get("conversation_history"),
-                    conversation_stage=state.get("conversation_stage"),
-                    current_node=state.get("current_node"),
-                    human_escalated=state.get("human_escalated", False),
-                )
+                    await update_conversation(
+                        db_session,
+                        session_id,
+                        lead_name=state.get("lead_name"),
+                        company_name=state.get("company_name"),
+                        industry=state.get("industry"),
+                        budget=state.get("budget"),
+                        timeline=state.get("timeline"),
+                        problem_statement=state.get("problem_statement"),
+                        qualification_score=state.get("qualification_score"),
+                        lead_status=state.get("lead_status"),
+                        lead_intent=state.get("lead_intent"),
+                        lead_type=state.get("lead_type"),
+                        booking_confirmed=state.get("booking_confirmed", False),
+                        meeting_time=state.get("meeting_time"),
+                        conversation_history=state.get("conversation_history"),
+                        conversation_stage=state.get("conversation_stage"),
+                        current_node=state.get("current_node"),
+                        human_escalated=state.get("human_escalated", False),
+                        hot_alert_sent_at=state.get("hot_alert_sent_at"),
+                    )
                 logger.debug("save_state OK session=%s", session_id)
         except Exception as e:
             logger.warning("save_state failed session=%s: %s", session_id, str(e))
@@ -65,6 +66,7 @@ class ConversationMemory:
                     "conversation_stage": lead.conversation_stage,
                     "current_node": lead.current_node,
                     "human_escalated": lead.human_escalated,
+                    "hot_alert_sent_at": lead.hot_alert_sent_at,
                 }
         except Exception as e:
             logger.warning("load_state failed session=%s: %s", session_id, str(e))

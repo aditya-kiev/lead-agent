@@ -13,10 +13,55 @@ from app.models.schemas import (
     StartConversationOut,
 )
 from app.services.memory import memory_service
+from app.agent.tools.email import send_email
+from app.config.settings import settings
+from app.database.session import async_session_factory
+from app.database.crud import get_conversation, update_conversation
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
+
+
+async def _maybe_send_hot_alert(session_id: str, result: dict) -> None:
+    """Send email alert the first time a session crosses the hot threshold."""
+    if result.get("lead_status") != "hot":
+        return
+    if not settings.notify_email or not settings.resend_api_key:
+        return
+
+    try:
+        async with async_session_factory() as db_session:
+            lead = await get_conversation(db_session, session_id)
+            if lead is None or lead.hot_alert_sent_at is not None:
+                return
+
+            name = lead.lead_name or "Unknown"
+            budget = f"${lead.budget:,.0f}" if lead.budget else "Not provided"
+            score = f"{lead.qualification_score:.0%}" if lead.qualification_score else "N/A"
+            meeting = lead.meeting_time.isoformat() if lead.meeting_time else "Not booked"
+
+            send_email(
+                to=settings.notify_email,
+                subject=f"Hot Lead Alert: {name} ({settings.business_name})",
+                body=(
+                    f"Hot Lead Alert\n"
+                    f"==============\n\n"
+                    f"Name: {name}\n"
+                    f"Budget: {budget}\n"
+                    f"Timeline: {lead.timeline or 'Not provided'}\n"
+                    f"Score: {score}\n"
+                    f"Meeting: {meeting}\n"
+                    f"Session: {session_id}\n"
+                ),
+            )
+
+            await update_conversation(
+                db_session, session_id,
+                hot_alert_sent_at=__import__("datetime").datetime.utcnow(),
+            )
+    except Exception as e:
+        logger.exception("_maybe_send_hot_alert failed for session %s: %s", session_id, e)
 
 
 @router.post("/start", response_model=StartConversationOut)
@@ -38,6 +83,8 @@ async def start_conversation(
             logger.exception(
                 "save_state failed for session %s: %s", session_id, db_err
             )
+
+        await _maybe_send_hot_alert(session_id, result)
 
         last_message = ""
         if result.get("conversation_history"):
@@ -83,6 +130,8 @@ async def handle_message(
                 "save_state failed for session %s: %s",
                 payload.session_id, db_err,
             )
+
+        await _maybe_send_hot_alert(payload.session_id, result)
 
         last_message = ""
         if result.get("conversation_history"):

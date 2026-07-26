@@ -191,3 +191,66 @@ async def test_master_api_key_still_works_with_demo_token_feature(client):
                 headers={"X-API-Key": "master-key"},
             )
             assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_dashboard_requires_auth(client):
+    """GET /dashboard must return 401 without credentials."""
+    with patch("app.config.settings.settings.dashboard_username", "admin"):
+        with patch("app.config.settings.settings.dashboard_password", "secret"):
+            response = await client.get("/dashboard")
+            assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_dashboard_returns_html_with_valid_auth(client):
+    """GET /dashboard must return 200 with HTML when credentials are valid."""
+    import base64
+    creds = base64.b64encode(b"admin:secret").decode()
+    with patch("app.config.settings.settings.dashboard_username", "admin"):
+        with patch("app.config.settings.settings.dashboard_password", "secret"):
+            with patch("app.api.dashboard.async_session_factory") as mock_sf:
+                mock_session = AsyncMock()
+                mock_result = MagicMock()
+                mock_result.scalars.return_value.all.return_value = []
+                mock_session.execute = AsyncMock(return_value=mock_result)
+                mock_sf.return_value.__aenter__.return_value = mock_session
+
+                response = await client.get(
+                    "/dashboard",
+                    headers={"Authorization": f"Basic {creds}"},
+                )
+                assert response.status_code == 200
+                assert "lead(s)" in response.text
+
+
+@pytest.mark.asyncio
+async def test_csv_export_requires_auth(client):
+    """GET /leads/export.csv must return 401 without credentials."""
+    with patch("app.config.settings.settings.dashboard_username", "admin"):
+        with patch("app.config.settings.settings.dashboard_password", "secret"):
+            response = await client.get("/leads/export.csv")
+            assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_csv_export_returns_csv_with_valid_auth(client):
+    """GET /leads/export.csv must return CSV with headers."""
+    import base64
+    creds = base64.b64encode(b"admin:secret").decode()
+    with patch("app.config.settings.settings.dashboard_username", "admin"):
+        with patch("app.config.settings.settings.dashboard_password", "secret"):
+            with patch("app.api.dashboard.async_session_factory") as mock_sf:
+                mock_session = AsyncMock()
+                mock_result = MagicMock()
+                mock_result.scalars.return_value.all.return_value = []
+                mock_session.execute = AsyncMock(return_value=mock_result)
+                mock_sf.return_value.__aenter__.return_value = mock_session
+
+                response = await client.get(
+                    "/leads/export.csv",
+                    headers={"Authorization": f"Basic {creds}"},
+                )
+                assert response.status_code == 200
+                assert response.headers["content-type"].startswith("text/csv")
+                assert "session_id" in response.text

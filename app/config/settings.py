@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     vertical: str = "generic"
     business_name: str = "our company"
 
+    resend_api_key: str = ""
+    notify_email: str = ""
+    resend_from_email: str = "onboarding@resend.dev"
+
+    dashboard_username: str = ""
+    dashboard_password: str = ""
+
+    crm_webhook_url: str | None = None
+    crm_webhook_secret: str | None = None
+
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_from_number: str = ""
