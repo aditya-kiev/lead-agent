@@ -9,6 +9,7 @@ from app.api.conversation import router as conversation_router
 from app.api.debug import router as debug_router
 from app.api.demo import router as demo_router
 from app.api.dashboard import router as dashboard_router
+from app.config.checks import check_production_api_key  # noqa: F401
 from app.config.settings import settings
 from app.database.session import init_db
 from app.models.schemas import HealthOut

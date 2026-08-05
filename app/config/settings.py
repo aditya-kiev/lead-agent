@@ -6,6 +6,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Lead Qualification Agent"
     debug: bool = False
+    environment: str = "development"
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/lead_agent"
     redis_url: str | None = None
@@ -29,6 +30,9 @@ class Settings(BaseSettings):
     demo_token_secret: str = ""
     demo_token_ttl_seconds: int = 7200
     demo_token_rpm_limit: int = 8
+    # TODO(tighten per client post-launch): currently wildcard to make the
+    # file://-based demo HTML work; add explicit origins once real clients host
+    # the widget on their own production domains.
     allowed_origins: list[str] = ["*"]
 
     vertical: str = "generic"
