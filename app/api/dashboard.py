@@ -1,4 +1,5 @@
 import csv
+import html
 import io
 import logging
 import secrets
@@ -57,14 +58,15 @@ async def dashboard(_auth: None = Depends(require_dashboard_auth)) -> HTMLRespon
     rows_html = ""
     for lead in leads:
         score = f"{lead.qualification_score:.0%}" if lead.qualification_score is not None else "—"
-        status = lead.lead_status or "—"
-        stage = lead.conversation_stage or "—"
+        lead_name_safe = html.escape(lead.lead_name) if lead.lead_name else "—"
+        status_safe = html.escape(lead.lead_status) if lead.lead_status else "—"
+        stage_safe = html.escape(lead.conversation_stage) if lead.conversation_stage else "—"
         meeting = lead.meeting_time.isoformat() if lead.meeting_time else "—"
         transcript = ""
         if lead.conversation_history:
             for msg in lead.conversation_history:
-                role = msg.get("role", "unknown")
-                content = msg.get("content", "")
+                role = html.escape(msg.get("role", "unknown"))
+                content = html.escape(msg.get("content", ""))
                 transcript += f"<strong>{role}:</strong> {content}<br>"
         else:
             transcript = "<em>No conversation history</em>"
@@ -72,16 +74,16 @@ async def dashboard(_auth: None = Depends(require_dashboard_auth)) -> HTMLRespon
 
         rows_html += f"""
         <tr>
-            <td>{lead.lead_name or '—'}</td>
+            <td>{lead_name_safe}</td>
             <td>{budget}</td>
-            <td>{status}</td>
+            <td>{status_safe}</td>
             <td>{score}</td>
-            <td>{stage}</td>
+            <td>{stage_safe}</td>
             <td>{meeting}</td>
             <td><details><summary>Transcript</summary><div class="transcript">{transcript}</div></details></td>
         </tr>"""
 
-    html = f"""<!DOCTYPE html>
+    page_html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -124,7 +126,7 @@ async def dashboard(_auth: None = Depends(require_dashboard_auth)) -> HTMLRespon
 </table>
 </body>
 </html>"""
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=page_html)
 
 
 @router.get("/leads/export.csv", response_class=StreamingResponse)

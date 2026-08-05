@@ -254,3 +254,56 @@ async def test_csv_export_returns_csv_with_valid_auth(client):
                 assert response.status_code == 200
                 assert response.headers["content-type"].startswith("text/csv")
                 assert "session_id" in response.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_escapes_lead_controlled_content(client):
+    """Stored XSS: dashboard must escape lead-supplied script tags in transcript and name."""
+    import base64
+    creds = base64.b64encode(b"admin:secret").decode()
+
+    evil = '<script>alert(1)</script>'
+    payload = {"session_id": "xss-session", "message": evil}
+    with patch("app.config.settings.settings.api_key", "test-secret-key"):
+        with patch("app.api.webhook.run_agent", new_callable=AsyncMock) as mock_agent:
+            mock_agent.return_value = {
+                "conversation_history": [{"role": "user", "content": evil}],
+                "lead_status": None,
+                "booking_confirmed": False,
+                "meeting_time": None,
+                "human_escalated": False,
+                "next_action": None,
+            }
+            with patch("app.services.memory.memory_service.save_state", new_callable=AsyncMock):
+                resp = await client.post(
+                    "/webhook/message",
+                    json=payload,
+                    headers={"X-API-Key": "test-secret-key"},
+                )
+                assert resp.status_code == 200
+
+    evil_lead = MagicMock()
+    evil_lead.lead_name = evil
+    evil_lead.lead_status = "hot"
+    evil_lead.conversation_stage = "qualified"
+    evil_lead.qualification_score = 0.9
+    evil_lead.budget = 50000
+    evil_lead.meeting_time = None
+    evil_lead.conversation_history = [{"role": "user", "content": evil}]
+
+    with patch("app.config.settings.settings.dashboard_username", "admin"):
+        with patch("app.config.settings.settings.dashboard_password", "secret"):
+            with patch("app.api.dashboard.async_session_factory") as mock_sf:
+                mock_session = AsyncMock()
+                mock_result = MagicMock()
+                mock_result.scalars.return_value.all.return_value = [evil_lead]
+                mock_session.execute = AsyncMock(return_value=mock_result)
+                mock_sf.return_value.__aenter__.return_value = mock_session
+
+                response = await client.get(
+                    "/dashboard",
+                    headers={"Authorization": f"Basic {creds}"},
+                )
+                assert response.status_code == 200
+                assert "<script>" not in response.text
+                assert "&lt;script&gt;" in response.text
