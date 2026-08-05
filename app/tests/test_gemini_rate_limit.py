@@ -85,11 +85,11 @@ async def test_single_turn_gemini_call_budget():
                     break
 
             mock = MagicMock()
-            if "friendly AI sales assistant" in sys_content:
+            if "You are a friendly" in sys_content:
                 mock.content = (
                     "INTENT: purchase\nREPLY: Hello! How can I help you today?"
                 )
-            elif "collecting information from a potential customer" in sys_content:
+            elif "collecting information from a potential" in sys_content:
                 mock.content = (
                     'EXTRACTED: {"lead_name": "Alice", "company_name": "Acme Inc", '
                     '"budget": 50000, "timeline": "3 months", '
